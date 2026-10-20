@@ -37,7 +37,7 @@ def health():
 def rank_rotations(request: FarmRequest):
     crops = json.loads(CROPS_PATH.read_text())
 
-    power_df = fetch_power_daily(request.lat, request.lon, start="20230101", end="20231231")
+    power_df = fetch_power_daily(request.lat, request.lon, start=request.start_date, end=request.end_date)
     soil = fetch_soilgrids(request.lat, request.lon)
     et0 = et0_penman_monteith(power_df, lat_deg=request.lat)
 
@@ -59,5 +59,5 @@ def rank_rotations(request: FarmRequest):
     return FarmResponse(
         soil=soil,
         mean_et0_mm_day=float(et0.mean()),
-        top_rotations=results[:5],
+        top_rotations=results[: request.top_n],
     )
