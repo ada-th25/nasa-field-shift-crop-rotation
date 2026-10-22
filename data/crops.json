@@ -1,5 +1,7 @@
 {
   "_notes": "Starter agronomic matrix for Central Iowa rotation crops. kc_ini/kc_mid/kc_end are FAO-56 single crop coefficients (Table 12, sub-humid climate, RHmin~45%, u2~2m/s) and feed the FAO-56 Penman-Monteith ETc calc. nitrogen_balance_kg_ha is the net soil N credit/debit left for the following crop, not gross fixation. Seasonal values are regional typicals for sanity-checking, not used directly in scoring once Kc x ET0 is computed from live NASA POWER data. Sources: FAO Irrigation and Drainage Paper 56; USDA NRCS cover crop guides; Iowa State University Extension agronomy guides.",
+  "_baseline_crop": "maize",
+  "_baseline_crop_note": "Continuous monoculture most commonly practiced in this region today; used as the 'business as usual' comparison for impact metrics, not a scored candidate itself.",
   "maize": {
     "crop_family": "Poaceae",
     "nitrogen_balance_kg_ha": -150,

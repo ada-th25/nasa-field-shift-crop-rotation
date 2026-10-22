@@ -12,7 +12,12 @@ from app.data.nasa_power import fetch_power_daily
 from app.data.soilgrids import fetch_soilgrids
 from app.engine.candidates import generate_candidate_sequences
 from app.engine.evapotranspiration import crop_water_demand_mm, et0_penman_monteith
-from app.engine.rotation_scoring import EnvironmentalBaseline, RotationWeights, score_sequence
+from app.engine.rotation_scoring import (
+    EnvironmentalBaseline,
+    RotationWeights,
+    compute_impact_metrics,
+    score_sequence,
+)
 from app.schemas import FarmRequest, FarmResponse
 
 CROPS_PATH = Path(__file__).resolve().parents[2] / "data" / "crops.json"
@@ -50,10 +55,18 @@ def rank_rotations(request: FarmRequest):
     weights = RotationWeights(**request.priority_weights)
     candidates = generate_candidate_sequences(crops, sequence_length=request.sequence_length)
 
+    baseline_crop_name = crops.get("_baseline_crop", "maize")
+    baseline_crop = {**crops[baseline_crop_name], "_name": baseline_crop_name}
+    baseline_water_demand_mm = crop_water_demand_mm(et0, baseline_crop)
+
     results = []
     for sequence in candidates:
         water_demands = [crop_water_demand_mm(et0, crop) for crop in sequence]
-        results.append(score_sequence(sequence, baseline, water_demands, weights))
+        result = score_sequence(sequence, baseline, water_demands, weights)
+        result["impact_metrics"] = compute_impact_metrics(
+            sequence, water_demands, baseline_crop, baseline_water_demand_mm
+        )
+        results.append(result)
     results.sort(key=lambda r: r["rsi"], reverse=True)
 
     return FarmResponse(

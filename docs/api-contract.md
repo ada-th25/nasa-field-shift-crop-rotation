@@ -59,7 +59,20 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
           "resilience_score": 1.0,
           "year_score": 0.62
         }
-      ]
+      ],
+      "impact_metrics": {
+        "baseline": "continuous maize",
+        "nitrogen_fertilizer_avoided_kg_ha": 510,
+        "water_saved_mm": 192.4,
+        "water_saved_pct": 22.5,
+        "sdg_tags": [
+          {
+            "sdg": "SDG 6",
+            "label": "Clean Water and Sanitation",
+            "rationale": "Uses ~192 mm less water than continuous maize over 3 years."
+          }
+        ]
+      }
     }
   ]
 }
@@ -75,6 +88,10 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
 | `top_rotations[].sequence` | array of strings | Crop names in year order, matching keys in `data/crops.json`. |
 | `top_rotations[].rsi` | float | Rotational Suitability Index — the overall ranking score. Not bounded to a fixed range (it's a discounted sum across years), higher is better, only meaningful relative to other rotations in the same response. |
 | `top_rotations[].year_breakdown` | array | One entry per year of the sequence, each 0-1 sub-score plus that year's combined score. Useful if the UI wants to show *why* a rotation ranked well (e.g. a bar chart per year). |
+| `top_rotations[].impact_metrics` | object | This rotation vs. a continuous-monoculture baseline (currently `data/crops.json`'s `_baseline_crop`, "maize"), in real units rather than abstract scores. |
+| `impact_metrics.water_saved_mm`, `.water_saved_pct` | float | Water demand avoided vs. the baseline over the full sequence. Can be negative (the rotation uses *more* water than the baseline, e.g. a sequence including alfalfa) — don't clamp this to zero in the UI, a negative value is a real and useful signal. |
+| `impact_metrics.nitrogen_fertilizer_avoided_kg_ha` | float | Net synthetic nitrogen avoided vs. the baseline, summed over the sequence. Can also be negative. |
+| `impact_metrics.sdg_tags` | array | Zero or more of `{sdg, label, rationale}`, only included when the rotation actually improves on the baseline for that metric — this list can be empty for a rotation that doesn't outperform the baseline on any tracked metric. Don't assume every rotation has at least one tag. |
 
 ### Known limitations to design around
 

@@ -15,6 +15,7 @@ class RankedRotation(BaseModel):
     sequence: list[str]
     rsi: float
     year_breakdown: list[dict]
+    impact_metrics: dict
 
 
 class FarmResponse(BaseModel):

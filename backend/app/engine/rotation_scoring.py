@@ -74,6 +74,61 @@ def resilience_score(crop: dict) -> float:
     return mapping.get(crop.get("drought_tolerance", "medium"), 0.5)
 
 
+def compute_impact_metrics(
+    sequence: list[dict],
+    water_demands_mm: list[float],
+    baseline_crop: dict,
+    baseline_water_demand_mm: float,
+) -> dict:
+    """Compare a candidate rotation against a continuous-monoculture baseline
+    (the same crop grown every year, e.g. continuous maize) in real units,
+    rather than the abstract 0-1 scores. Framed against UN SDGs the numbers
+    plausibly support: SDG 6 (Clean Water), SDG 13 (Climate Action, via
+    avoided synthetic nitrogen), SDG 15 (Life on Land, via soil organic
+    carbon / nitrogen balance), SDG 2 (Zero Hunger, via resilience and
+    nitrogen self-sufficiency). Tags are only attached when the rotation
+    actually improves on the baseline for that metric, not asserted
+    unconditionally.
+    """
+    length = len(sequence)
+
+    rotation_n_total = sum(c["nitrogen_balance_kg_ha"] for c in sequence)
+    baseline_n_total = baseline_crop["nitrogen_balance_kg_ha"] * length
+    nitrogen_fertilizer_avoided_kg_ha = round(rotation_n_total - baseline_n_total, 1)
+
+    rotation_water_total = sum(water_demands_mm)
+    baseline_water_total = baseline_water_demand_mm * length
+    water_saved_mm = round(baseline_water_total - rotation_water_total, 1)
+    water_saved_pct = round(100 * water_saved_mm / baseline_water_total, 1) if baseline_water_total else 0.0
+
+    sdg_tags = []
+    if water_saved_mm > 0:
+        sdg_tags.append({
+            "sdg": "SDG 6",
+            "label": "Clean Water and Sanitation",
+            "rationale": f"Uses ~{water_saved_mm:.0f} mm less water than continuous {baseline_crop['_name']} over {length} years.",
+        })
+    if nitrogen_fertilizer_avoided_kg_ha > 0:
+        sdg_tags.append({
+            "sdg": "SDG 13",
+            "label": "Climate Action",
+            "rationale": f"Avoids ~{nitrogen_fertilizer_avoided_kg_ha:.0f} kg/ha of synthetic nitrogen vs. continuous {baseline_crop['_name']}, reducing fertilizer-linked emissions.",
+        })
+        sdg_tags.append({
+            "sdg": "SDG 15",
+            "label": "Life on Land",
+            "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture.",
+        })
+
+    return {
+        "baseline": f"continuous {baseline_crop['_name']}",
+        "nitrogen_fertilizer_avoided_kg_ha": nitrogen_fertilizer_avoided_kg_ha,
+        "water_saved_mm": water_saved_mm,
+        "water_saved_pct": water_saved_pct,
+        "sdg_tags": sdg_tags,
+    }
+
+
 def score_sequence(
     sequence: list[dict],
     baseline: EnvironmentalBaseline,
