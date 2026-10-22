@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.data.nasa_power import fetch_power_daily
 from app.data.soilgrids import fetch_soilgrids
 from app.engine.candidates import generate_candidate_sequences
+from app.engine.climate_suitability import filter_climate_suitable_crops
 from app.engine.evapotranspiration import crop_water_demand_mm, et0_penman_monteith
 from app.engine.rotation_scoring import (
     EnvironmentalBaseline,
@@ -53,7 +54,8 @@ def rank_rotations(request: FarmRequest):
     )
 
     weights = RotationWeights(**request.priority_weights)
-    candidates = generate_candidate_sequences(crops, sequence_length=request.sequence_length)
+    suitable_crops, excluded_crops = filter_climate_suitable_crops(crops, power_df)
+    candidates = generate_candidate_sequences(suitable_crops, sequence_length=request.sequence_length)
 
     baseline_crop_name = crops.get("_baseline_crop", "maize")
     baseline_crop = {**crops[baseline_crop_name], "_name": baseline_crop_name}
@@ -73,4 +75,5 @@ def rank_rotations(request: FarmRequest):
         soil=soil,
         mean_et0_mm_day=float(et0.mean()),
         top_rotations=results[: request.top_n],
+        excluded_crops=excluded_crops,
     )

@@ -22,3 +22,4 @@ class FarmResponse(BaseModel):
     soil: dict
     mean_et0_mm_day: float
     top_rotations: list[RankedRotation]
+    excluded_crops: list[dict] = []

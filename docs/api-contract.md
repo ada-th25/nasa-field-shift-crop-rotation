@@ -80,9 +80,9 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
 
 | Field | Type | Notes |
 |---|---|---|
-| `soil.clay_pct`, `soil.sand_pct` | float, % | Topsoil (0-5cm) texture, from SoilGrids. |
-| `soil.ph` | float | Topsoil pH. |
-| `soil.soc_g_kg` | float | Soil organic carbon, g/kg. |
+| `soil.clay_pct`, `soil.sand_pct` | float, % | Topsoil (0-5cm) texture, from SoilGrids. **Can be `null`** — SoilGrids has gaps at some real-world points (e.g. high-latitude/coastal sites); handle null in the UI rather than assuming a number. |
+| `soil.ph` | float or null | Topsoil pH. Same null caveat as above. |
+| `soil.soc_g_kg` | float or null | Soil organic carbon, g/kg. Same null caveat as above. |
 | `mean_et0_mm_day` | float | Average daily reference evapotranspiration over the requested date window. Informational — a high-level water-demand signal for the UI. |
 | `top_rotations` | array | Ranked highest RSI first. |
 | `top_rotations[].sequence` | array of strings | Crop names in year order, matching keys in `data/crops.json`. |
@@ -92,9 +92,11 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
 | `impact_metrics.water_saved_mm`, `.water_saved_pct` | float | Water demand avoided vs. the baseline over the full sequence. Can be negative (the rotation uses *more* water than the baseline, e.g. a sequence including alfalfa) — don't clamp this to zero in the UI, a negative value is a real and useful signal. |
 | `impact_metrics.nitrogen_fertilizer_avoided_kg_ha` | float | Net synthetic nitrogen avoided vs. the baseline, summed over the sequence. Can also be negative. |
 | `impact_metrics.sdg_tags` | array | Zero or more of `{sdg, label, rationale}`, only included when the rotation actually improves on the baseline for that metric — this list can be empty for a rotation that doesn't outperform the baseline on any tracked metric. Don't assume every rotation has at least one tag. |
+| `excluded_crops` | array | Crops from `data/crops.json` dropped from consideration at this site for being climate-unsuitable (e.g. too cold for maize), each as `{crop, site_mean_temp_c, crop_temp_tolerance_c}`. Worth surfacing in the UI ("X wasn't considered because...") rather than hiding — it's evidence the recommendation is site-checked, not generic. Can be empty. |
 
 ### Known limitations to design around
 
 - No profit/yield dimension yet — scores only reflect soil health, water, and drought resilience. If the UI shows a "trade-off" framing (e.g. "regeneration vs. profit"), the profit side isn't implemented yet.
-- Crop list is currently 6 crops suited to a Central Iowa rotation (`data/crops.json`). Requesting a location far from Iowa will still run, but the candidate crops won't make agronomic sense for that climate yet.
+- Crop list is currently 6 crops suited to a Central Iowa rotation (`data/crops.json`). The climate-suitability filter (see `excluded_crops`) now checks each crop's temperature tolerance against the site before recommending it, so the engine won't recommend e.g. maize somewhere too cold — but it only checks temperature, not day-length/photoperiod, rainfall seasonality, or frost timing, so a crop passing the filter isn't a full agronomic guarantee for an unfamiliar region.
+- The climate filter needs close to a full year of data (`start_date`/`end_date` spanning ~365 days) to reliably find a viable growing window regardless of hemisphere or local planting calendar — a short date range may wrongly exclude a crop that's fine there, just not during the requested window.
 - First request for a new `lat`/`lon`/date-range combination will be slower (NASA POWER + SoilGrids API calls); repeat requests for the same inputs are served from a local cache.
