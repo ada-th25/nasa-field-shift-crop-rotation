@@ -57,7 +57,15 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
           "soil_score": 0.05,
           "water_score": 1.0,
           "resilience_score": 1.0,
-          "year_score": 0.62
+          "year_score": 0.62,
+          "explanation": {
+            "nitrogen_balance_kg_ha": 10,
+            "water_demand_mm": 253.4,
+            "water_deficit_mm": 0,
+            "root_diversified_from_previous": false,
+            "drought_tolerance": "high",
+            "summary": "Adds an estimated 10 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~253 mm) is comfortably covered by expected rainfall and stored soil moisture. High drought tolerance."
+          }
         }
       ],
       "impact_metrics": {
@@ -88,6 +96,7 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
 | `top_rotations[].sequence` | array of strings | Crop names in year order, matching keys in `data/crops.json`. |
 | `top_rotations[].rsi` | float | Rotational Suitability Index — the overall ranking score. Not bounded to a fixed range (it's a discounted sum across years), higher is better, only meaningful relative to other rotations in the same response. |
 | `top_rotations[].year_breakdown` | array | One entry per year of the sequence, each 0-1 sub-score plus that year's combined score. Useful if the UI wants to show *why* a rotation ranked well (e.g. a bar chart per year). |
+| `year_breakdown[].explanation` | object | The 0-1 scores translated into real units and plain language, for showing a farmer *why* — not just "soil_score: 0.39" but "adds ~40 kg N/ha". Fields: `nitrogen_balance_kg_ha` (this crop's own net N for the year, not a cumulative soil N stock — we don't model that), `water_demand_mm`, `water_deficit_mm` (0 if demand is covered by expected rainfall/soil moisture), `root_diversified_from_previous` (bool), `drought_tolerance`, and `summary` (a ready-to-display sentence, or build your own from the fields). |
 | `top_rotations[].impact_metrics` | object | This rotation vs. a continuous-monoculture baseline (currently `data/crops.json`'s `_baseline_crop`, "maize"), in real units rather than abstract scores. |
 | `impact_metrics.water_saved_mm`, `.water_saved_pct` | float | Water demand avoided vs. the baseline over the full sequence. Can be negative (the rotation uses *more* water than the baseline, e.g. a sequence including alfalfa) — don't clamp this to zero in the UI, a negative value is a real and useful signal. |
 | `impact_metrics.nitrogen_fertilizer_avoided_kg_ha` | float | Net synthetic nitrogen avoided vs. the baseline, summed over the sequence. Can also be negative. |

@@ -59,11 +59,17 @@ def soil_score(crop: dict, prev_crop: dict | None, baseline: EnvironmentalBaseli
     return float(np.clip(score, 0, 1))
 
 
+def available_water_mm(baseline: EnvironmentalBaseline) -> float:
+    """Rainfall scaled up by how wet the root zone already is -- the same
+    'water actually available' estimate used by water_score and the
+    per-year explanation, kept in one place so they can't drift apart."""
+    return baseline.seasonal_precip_mm * (0.5 + 0.5 * baseline.mean_root_zone_wetness)
+
+
 def water_score(crop_water_demand_mm: float, baseline: EnvironmentalBaseline) -> float:
     """0-1 score, 1 = demand comfortably covered by rainfall + stored soil
     moisture, 0 = severe deficit."""
-    available_water = baseline.seasonal_precip_mm * (0.5 + 0.5 * baseline.mean_root_zone_wetness)
-    deficit = max(crop_water_demand_mm - available_water, 0)
+    deficit = max(crop_water_demand_mm - available_water_mm(baseline), 0)
     water_deficit_index = deficit / max(crop_water_demand_mm, 1)
     return float(np.clip(1 - water_deficit_index, 0, 1))
 
@@ -72,6 +78,62 @@ def resilience_score(crop: dict) -> float:
     """0-1 score from the crop's published drought tolerance."""
     mapping = {"low": 0.2, "medium": 0.6, "high": 1.0}
     return mapping.get(crop.get("drought_tolerance", "medium"), 0.5)
+
+
+def explain_year(
+    crop: dict, prev_crop: dict | None, water_demand_mm: float, baseline: EnvironmentalBaseline
+) -> dict:
+    """Real-unit, plain-language explanation of why this crop scored the
+    way it did in this year of the rotation -- the 0-1 scores in
+    year_breakdown aren't meaningful to a farmer on their own, this is the
+    'why' layer on top of them. Deliberately doesn't claim a soil nitrogen
+    *stock* change (we don't model a running soil N pool), only this
+    crop's own net N balance for the year.
+    """
+    n_balance = crop["nitrogen_balance_kg_ha"]
+    water_deficit_mm = round(max(water_demand_mm - available_water_mm(baseline), 0), 1)
+    root_diversified = prev_crop is not None and crop["root_depth_class"] != prev_crop["root_depth_class"]
+    drought_tolerance = crop.get("drought_tolerance", "medium")
+
+    sentences = []
+    if n_balance > 0:
+        sentences.append(
+            f"Adds an estimated {n_balance:.0f} kg N/ha to the soil, reducing fertilizer need for the next crop."
+        )
+    elif n_balance < 0:
+        sentences.append(
+            f"Draws down an estimated {abs(n_balance):.0f} kg N/ha of soil nitrogen; will need fertilizer input."
+        )
+    else:
+        sentences.append("Roughly nitrogen-neutral for the soil.")
+
+    if water_deficit_mm > 0:
+        sentences.append(
+            f"Water demand (~{water_demand_mm:.0f} mm) exceeds expected rainfall and stored soil "
+            f"moisture by ~{water_deficit_mm:.0f} mm; irrigation may be needed."
+        )
+    else:
+        sentences.append(
+            f"Water demand (~{water_demand_mm:.0f} mm) is comfortably covered by expected rainfall "
+            "and stored soil moisture."
+        )
+
+    if root_diversified:
+        sentences.append(
+            "Different rooting depth than the previous crop, helping break up compaction and "
+            "access a different soil moisture layer."
+        )
+
+    sentences.append(f"{drought_tolerance.capitalize()} drought tolerance.")
+
+    return {
+        "nitrogen_balance_kg_ha": n_balance,
+        "water_demand_mm": round(water_demand_mm, 1),
+        "water_deficit_mm": water_deficit_mm,
+        "root_diversified_from_previous": root_diversified,
+        "drought_tolerance": drought_tolerance,
+        "summary": " ".join(sentences),
+    }
 
 
 def compute_impact_metrics(
@@ -154,6 +216,7 @@ def score_sequence(
             "water_score": round(s_water, 3),
             "resilience_score": round(s_resilience, 3),
             "year_score": round(year_total, 3),
+            "explanation": explain_year(crop, prev_crop, water_demands_mm[year_idx], baseline),
         })
 
     discounted_total = sum(
