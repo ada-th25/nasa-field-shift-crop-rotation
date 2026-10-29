@@ -40,6 +40,26 @@ def is_climate_suitable(crop: dict, mean_temp_c: float) -> bool:
     return crop["min_temp_c"] <= mean_temp_c <= crop["max_temp_c"]
 
 
+def frost_days_in_best_window(power_df: pd.DataFrame, crop: dict, frost_threshold_c: float = 0.0) -> int:
+    """Count of days with T2M_MIN below `frost_threshold_c` within the same
+    best-fit growing window used by best_growing_window_mean_temp_c. A cheap,
+    real-data frost signal -- doesn't predict a specific frost *date*, just
+    whether the warmest window this data offers still saw sub-zero days."""
+    season_length = crop["season_length_days"]
+    temps = power_df["T2M"].dropna()
+    if len(temps) < season_length or "T2M_MIN" not in power_df:
+        return 0
+
+    rolling_means = temps.rolling(window=season_length).mean().dropna()
+    crop_mid_temp = (crop["min_temp_c"] + crop["max_temp_c"]) / 2
+    closest_idx = (rolling_means - crop_mid_temp).abs().idxmin()
+
+    end_pos = power_df.index.get_loc(closest_idx)
+    start_pos = max(end_pos - season_length + 1, 0)
+    window_min_temps = power_df["T2M_MIN"].iloc[start_pos:end_pos + 1].dropna()
+    return int((window_min_temps < frost_threshold_c).sum())
+
+
 def filter_climate_suitable_crops(crops: dict, power_df: pd.DataFrame) -> tuple[dict, list[dict]]:
     """Split a crops dict (as loaded from crops.json, including its `_`
     metadata keys) into (suitable_crops, excluded) for this site's weather.

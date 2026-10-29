@@ -12,12 +12,13 @@ from pathlib import Path
 from app.data.nasa_power import fetch_power_daily
 from app.data.soilgrids import fetch_soilgrids
 from app.engine.candidates import generate_candidate_sequences
-from app.engine.climate_suitability import filter_climate_suitable_crops
+from app.engine.climate_suitability import filter_climate_suitable_crops, frost_days_in_best_window
 from app.engine.evapotranspiration import crop_water_demand_mm, et0_penman_monteith
 from app.engine.rotation_scoring import (
     EnvironmentalBaseline,
     RotationWeights,
     compute_impact_metrics,
+    generate_risks_and_gaps,
     score_sequence,
 )
 
@@ -62,18 +63,28 @@ def main():
     baseline_crop_name = crops.get("_baseline_crop", "maize")
     baseline_crop = {**crops[baseline_crop_name], "_name": baseline_crop_name}
     baseline_water_demand_mm = crop_water_demand_mm(et0, baseline_crop)
+    soil_is_estimated = soil.get("soc_g_kg") is None
 
     weights = RotationWeights(soil=0.4, water=0.4, resilience=0.2)
-    results = []
-    for sequence in candidates:
+
+    def score_named_sequence(sequence):
         water_demands = [crop_water_demand_mm(et0, crop) for crop in sequence]
         result = score_sequence(sequence, baseline, water_demands, weights)
         result["impact_metrics"] = compute_impact_metrics(
             sequence, water_demands, baseline_crop, baseline_water_demand_mm
         )
-        results.append(result)
+        frost_risk_crops = list(dict.fromkeys(
+            crop["_name"] for crop in sequence if frost_days_in_best_window(power_df, crop) > 0
+        ))
+        result["risks_and_gaps"] = generate_risks_and_gaps(frost_risk_crops, soil_is_estimated)
+        return result
 
+    results = [score_named_sequence(sequence) for sequence in candidates]
     results.sort(key=lambda r: r["rsi"], reverse=True)
+
+    print(f"\nExisting rotation (continuous {baseline_crop_name}) for comparison:")
+    current = score_named_sequence([baseline_crop] * 3)
+    print(f"  RSI {current['rsi']:.3f}  {' -> '.join(current['sequence'])}")
 
     print(f"\nTop 5 rotations (vs. continuous {baseline_crop_name} baseline):")
     for r in results[:5]:
@@ -84,6 +95,8 @@ def main():
             f"N fertilizer avoided: {impact['nitrogen_fertilizer_avoided_kg_ha']:.0f} kg/ha, "
             f"SDGs: {', '.join(t['sdg'] for t in impact['sdg_tags']) or 'none'}"
         )
+        for risk in r["risks_and_gaps"]:
+            print(f"      risk/gap: {risk}")
 
 
 if __name__ == "__main__":

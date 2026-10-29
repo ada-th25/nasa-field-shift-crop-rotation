@@ -20,7 +20,8 @@ Returns `{"status": "ok"}`. Use for a connectivity check.
   "end_date": "20231231",
   "priority_weights": { "soil": 0.4, "water": 0.4, "resilience": 0.2 },
   "sequence_length": 3,
-  "top_n": 5
+  "top_n": 5,
+  "current_rotation": ["maize"]
 }
 ```
 
@@ -33,6 +34,7 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
 | `priority_weights` | object | Keys `soil`, `water`, `resilience` (farmer priority sliders). Don't need to sum to 1, they're normalized server-side. |
 | `sequence_length` | int | How many years in a candidate rotation. 3 is the current default and what's been tested; larger values are untested and the candidate count grows combinatorially. |
 | `top_n` | int | How many ranked rotations to return. |
+| `current_rotation` | array of strings or omitted | The farmer's actual current rotation, crop names from `data/crops.json` (e.g. `["maize"]` for continuous maize, or a multi-year list). Not filtered by the climate check — it's what they're already doing, not a recommendation. Scored through the identical pipeline and returned as `current_rotation` in the response, so the UI can show it side by side with `top_rotations` rather than only inferring it from `impact_metrics`. An unrecognized crop name returns HTTP 400. |
 
 **On the point vs. polygon question**: NASA POWER's weather data is ~55km grid resolution, so a precise field boundary doesn't currently improve accuracy — if the frontend lets users draw a farm boundary (good UX), reduce it to a centroid point client-side before calling this endpoint. No backend change needed for that.
 
@@ -80,9 +82,20 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
             "rationale": "Uses ~192 mm less water than continuous maize over 3 years."
           }
         ]
-      }
+      },
+      "risks_and_gaps": [
+        "Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.",
+        "No profit, yield, or market-price dimension is scored yet -- this rotation is ranked on soil health, water, and drought resilience only, not expected income."
+      ]
     }
-  ]
+  ],
+  "current_rotation": {
+    "sequence": ["maize"],
+    "rsi": 0.44,
+    "year_breakdown": [ "...same shape as top_rotations[].year_breakdown..." ],
+    "impact_metrics": { "baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 0, "water_saved_mm": 0.0, "water_saved_pct": 0.0, "sdg_tags": [] },
+    "risks_and_gaps": [ "...same two always-on gaps as above..." ]
+  }
 }
 ```
 
@@ -101,7 +114,9 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
 | `impact_metrics.water_saved_mm`, `.water_saved_pct` | float | Water demand avoided vs. the baseline over the full sequence. Can be negative (the rotation uses *more* water than the baseline, e.g. a sequence including alfalfa) — don't clamp this to zero in the UI, a negative value is a real and useful signal. |
 | `impact_metrics.nitrogen_fertilizer_avoided_kg_ha` | float | Net synthetic nitrogen avoided vs. the baseline, summed over the sequence. Can also be negative. |
 | `impact_metrics.sdg_tags` | array | Zero or more of `{sdg, label, rationale}`, only included when the rotation actually improves on the baseline for that metric — this list can be empty for a rotation that doesn't outperform the baseline on any tracked metric. Don't assume every rotation has at least one tag. |
+| `top_rotations[].risks_and_gaps` | array of strings | Plain-language caveats for this specific rotation — what the challenge brief calls "information gaps" and "risks that would need local review." Always includes two general caveats (climate check is temperature-only; no profit/yield scoring yet); can also include a frost-risk note naming specific crops if the best growing window found in the weather data still had sub-zero days, and a soil-data-estimated note if SoilGrids returned null at this site. Never empty. |
 | `excluded_crops` | array | Crops from `data/crops.json` dropped from consideration at this site for being climate-unsuitable (e.g. too cold for maize), each as `{crop, site_mean_temp_c, crop_temp_tolerance_c}`. Worth surfacing in the UI ("X wasn't considered because...") rather than hiding — it's evidence the recommendation is site-checked, not generic. Can be empty. |
+| `current_rotation` | object or `null` | Only present if the request included `current_rotation`. Same shape as one entry of `top_rotations`, so the UI can render the farmer's existing practice alongside the recommendations for direct comparison — this satisfies the brief's ask to "compare at least three rotation strategies, including the existing rotation." `null` if the request didn't supply one. |
 
 ### Known limitations to design around
 

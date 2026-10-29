@@ -191,6 +191,32 @@ def compute_impact_metrics(
     }
 
 
+def generate_risks_and_gaps(frost_risk_crops: list[str], soil_is_estimated: bool) -> list[str]:
+    """Per-rotation caveats surfaced directly in the API response, not just
+    in docs -- what the brief calls 'information gaps' and 'risks that would
+    need local review by farmers or agricultural experts'. Always includes
+    the two gaps that apply to every rotation this engine produces, plus any
+    rotation-specific flags."""
+    risks = [
+        "Climate suitability is checked on temperature only -- day length, frost timing, rainfall "
+        "seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm "
+        "this rotation suits local conditions before adopting it.",
+        "No profit, yield, or market-price dimension is scored yet -- this rotation is ranked on "
+        "soil health, water, and drought resilience only, not expected income.",
+    ]
+    if frost_risk_crops:
+        risks.append(
+            f"{', '.join(frost_risk_crops)}: the best available growing window in the fetched "
+            "weather data still included sub-zero days. Check local frost dates before planting."
+        )
+    if soil_is_estimated:
+        risks.append(
+            "Soil texture, pH, and organic carbon data weren't available at this exact location; a "
+            "generic estimate was used instead. A local soil test is recommended."
+        )
+    return risks
+
+
 def score_sequence(
     sequence: list[dict],
     baseline: EnvironmentalBaseline,
