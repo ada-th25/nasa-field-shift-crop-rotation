@@ -20,6 +20,7 @@ from app.engine.rotation_scoring import (
     compute_impact_metrics,
     generate_risks_and_gaps,
     score_sequence,
+    single_year_perennials,
 )
 
 # Defaults to Central Iowa; override with CLI args to try another site.
@@ -76,7 +77,9 @@ def main():
         frost_risk_crops = list(dict.fromkeys(
             crop["_name"] for crop in sequence if frost_days_in_best_window(power_df, crop) > 0
         ))
-        result["risks_and_gaps"] = generate_risks_and_gaps(frost_risk_crops, soil_is_estimated)
+        result["risks_and_gaps"] = generate_risks_and_gaps(
+            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence)
+        )
         return result
 
     results = [score_named_sequence(sequence) for sequence in candidates]

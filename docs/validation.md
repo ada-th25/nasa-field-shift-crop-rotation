@@ -12,9 +12,11 @@ as possible, run via `python scripts/demo.py <lat> <lon>`:
 
 | Site | Climate | Crops excluded (too cold/hot for any viable window) | Top-ranked rotation |
 |---|---|---|---|
-| Ames, Iowa (42.03, -93.63) | Humid continental | None | cereal_rye_cover → soybean → cereal_rye_cover (RSI 1.795) |
-| Reykjavik, Iceland (64.13, -21.90) | Subarctic | maize, alfalfa | cereal_rye_cover → soybean → cereal_rye_cover (RSI 1.795) |
-| Singapore (1.35, 103.82) | Tropical | None | alfalfa → cereal_rye_cover → alfalfa (RSI 2.108) |
+| Ames, Iowa (42.03, -93.63) | Humid continental | None | cereal_rye_cover → alfalfa → cereal_rye_cover (RSI 1.966) |
+| Reykjavik, Iceland (64.13, -21.90) | Subarctic | maize, alfalfa | cereal_rye_cover → soybean → winter_wheat (RSI 1.780, tied with → oats) |
+| Singapore (1.35, 103.82) | Tropical | None | cereal_rye_cover → alfalfa → cereal_rye_cover (RSI 2.139) |
+
+*Numbers above are post-erosion-scoring (see "Erosion scoring and a modelling artifact it surfaced" below); re-run `scripts/demo.py` if `rotation_scoring.py` changes again.*
 
 What this shows: the climate filter correctly drops maize and alfalfa for
 Iceland (both need warmer conditions than any window in Iceland's year
@@ -30,7 +32,8 @@ agronomic correctness everywhere.**
 ## Comparison against real Iowa agronomy research
 
 The Iowa top recommendation is a 3-year rotation that drops corn entirely
-in favor of cereal rye and soybean. How does that hold up against actual
+in favor of cereal rye and alfalfa, with cereal-rye-then-soybean a close
+second (RSI 1.938 vs. 1.966). How does that hold up against actual
 research, not just internal model logic?
 
 **Where it agrees:**
@@ -44,14 +47,16 @@ research, not just internal model logic?
   nitrogen and herbicide use while maintaining productivity. That's the
   same direction our model's top rotations point in: diversifying away
   from continuous corn with a small grain and a legume reduces synthetic N
-  need. Source: [Iowa State INRC project page](https://inrc.cals.iastate.edu/marsden-long-term-rotation-study), [full text on PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC3468434).
+  need, and the 4-year Marsden Farm rotation specifically includes alfalfa,
+  so the model reaching for the same crop independently is a good sign.
+  Source: [Iowa State INRC project page](https://inrc.cals.iastate.edu/marsden-long-term-rotation-study), [full text on PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC3468434).
 - An eight-year Iowa Learning Farms / Practical Farmers of Iowa study found
   cereal rye ahead of soybean has little to no negative yield effect and
-  improved soybean yield in several site-years — i.e. the specific
-  structural choice our top rotation makes (cereal rye → soybean) is a
-  real, supported practice, not an arbitrary model output. Iowa State
-  Extension publishes a dedicated guide for exactly this transition (CROP
-  3158, "Post Corn, Going to Soybean: Use Cereal Rye").
+  improved soybean yield in several site-years — i.e. the second-ranked
+  rotation (cereal rye → soybean → cereal rye) is a real, supported
+  practice, not an arbitrary model output. Iowa State Extension publishes a
+  dedicated guide for exactly this transition (CROP 3158, "Post Corn, Going
+  to Soybean: Use Cereal Rye").
 
 **Where it diverges, and why that matters:**
 - Every real rotation in the Marsden Farm study, including the most
@@ -64,10 +69,20 @@ research, not just internal model logic?
   resource-intensive crop in the mix. This cross-check gives concrete
   evidence for why the profit dimension is the right next priority, rather
   than just a nice-to-have.
+- The real Marsden Farm rotation grows alfalfa for two full consecutive
+  years as an established stand, never alternating it yearly with another
+  crop. Our top-ranked rotation (cereal rye → alfalfa → cereal rye) plants
+  and replaces alfalfa annually, which doesn't match how it's actually
+  grown and ignores the yield drag/establishment cost of a first-year
+  stand. This is a direct side effect of adding a role-based erosion score
+  (continuous perennial cover scores highest) without the engine knowing
+  alfalfa is a multi-year perennial — flagged automatically in that
+  rotation's `risks_and_gaps`, and the right fix is multi-year crop
+  "blocks" in the candidate generator, not a quick patch.
 
 **Bottom line for the pitch**: the model's structural logic (diversify,
 add a legume or cover crop, reduce synthetic N) is independently supported
-by a real long-term Iowa State study, and this cereal-rye-before-soybean has specific ISU Extension guidance behind it. The place it
-diverges from real-world practice (corn disappearing entirely) is an
-honest, explainable gap tied to a feature we've already scoped, not a
-hidden flaw.
+by a real long-term Iowa State study, right down to alfalfa showing up in
+both. The places it diverges from real-world practice (corn disappearing
+entirely, alfalfa treated as an annual) are honest, explainable gaps tied
+to features we've already scoped, not hidden flaws.

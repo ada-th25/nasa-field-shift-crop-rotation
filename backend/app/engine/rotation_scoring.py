@@ -43,9 +43,35 @@ def passes_agronomic_rules(sequence: list[dict], min_family_gap_years: int = 2) 
     return True
 
 
+# Qualitative erosion-protection indicator by crop role, NOT a RUSLE
+# C-factor -- those are soil/slope/tillage-practice-specific and need
+# site-level RUSLE2 modelling (NRCS RUSLE2 Handbook) to get right, and even
+# NRCS's own management files are inconsistent for this (Chesapeake Bay
+# Program STAC review, 2017). This instead encodes well-documented general
+# patterns: continuous perennial cover and dedicated cover crops protect
+# soil far better than annual row crops with a bare-soil establishment
+# period, and legume row crops like soybean leave less persistent residue
+# than grain crops (widely reported corn-vs-soybean erosion comparisons,
+# e.g. Iowa State University Extension).
+EROSION_PROTECTION_BY_ROLE = {
+    "perennial_forage_legume": 1.0,
+    "cover_crop": 0.9,
+    "cash_grain": 0.5,
+    "cash_grain_legume": 0.3,
+}
+
+
+def erosion_protection_score(crop: dict) -> float:
+    """0-1 qualitative erosion-protection indicator from role + root habit.
+    See EROSION_PROTECTION_BY_ROLE for what this is and isn't."""
+    base = EROSION_PROTECTION_BY_ROLE.get(crop.get("role"), 0.5)
+    root_bonus = 0.1 if crop.get("root_type", "").startswith("fibrous") else 0.0
+    return float(np.clip(base + root_bonus, 0, 1))
+
+
 def soil_score(crop: dict, prev_crop: dict | None, baseline: EnvironmentalBaseline) -> float:
     """0-1 score: nitrogen contribution + organic carbon headroom + root
-    diversity bonus vs. the previous crop in the sequence."""
+    diversity bonus vs. the previous crop + erosion protection."""
     n_component = np.tanh(max(crop["nitrogen_balance_kg_ha"], 0) / 100)
 
     carbon_headroom = 1 - min(baseline.soil_organic_carbon_g_kg / baseline.soil_degradation_baseline_g_kg, 1)
@@ -55,7 +81,14 @@ def soil_score(crop: dict, prev_crop: dict | None, baseline: EnvironmentalBaseli
     if prev_crop is not None and crop["root_depth_class"] != prev_crop["root_depth_class"]:
         root_bonus = 0.2
 
-    score = 0.5 * n_component + 0.3 * carbon_component + 0.2 * (1 if root_bonus else 0)
+    erosion_component = erosion_protection_score(crop)
+
+    score = (
+        0.35 * n_component
+        + 0.25 * carbon_component
+        + 0.15 * (1 if root_bonus else 0)
+        + 0.25 * erosion_component
+    )
     return float(np.clip(score, 0, 1))
 
 
@@ -94,6 +127,8 @@ def explain_year(
     water_deficit_mm = round(max(water_demand_mm - available_water_mm(baseline), 0), 1)
     root_diversified = prev_crop is not None and crop["root_depth_class"] != prev_crop["root_depth_class"]
     drought_tolerance = crop.get("drought_tolerance", "medium")
+    erosion_score = erosion_protection_score(crop)
+    erosion_level = "high" if erosion_score >= 0.75 else "medium" if erosion_score >= 0.45 else "low"
 
     sentences = []
     if n_balance > 0:
@@ -125,6 +160,7 @@ def explain_year(
         )
 
     sentences.append(f"{drought_tolerance.capitalize()} drought tolerance.")
+    sentences.append(f"{erosion_level.capitalize()} erosion protection from ground cover and residue.")
 
     return {
         "nitrogen_balance_kg_ha": n_balance,
@@ -132,6 +168,7 @@ def explain_year(
         "water_deficit_mm": water_deficit_mm,
         "root_diversified_from_previous": root_diversified,
         "drought_tolerance": drought_tolerance,
+        "erosion_protection": erosion_level,
         "summary": " ".join(sentences),
     }
 
@@ -191,7 +228,26 @@ def compute_impact_metrics(
     }
 
 
-def generate_risks_and_gaps(frost_risk_crops: list[str], soil_is_estimated: bool) -> list[str]:
+def single_year_perennials(sequence: list[dict]) -> list[str]:
+    """Perennial crops (e.g. alfalfa) that appear for only one year in a row
+    in this sequence. Real perennial forage is established once and kept in
+    the ground for several years -- a sequence that plants and replaces it
+    annually isn't how it's actually grown, and establishment-year yield
+    drag/cost isn't modelled here."""
+    names = []
+    for i, crop in enumerate(sequence):
+        if crop.get("role") != "perennial_forage_legume":
+            continue
+        prev_same = i > 0 and sequence[i - 1].get("_name") == crop.get("_name")
+        next_same = i < len(sequence) - 1 and sequence[i + 1].get("_name") == crop.get("_name")
+        if not prev_same and not next_same:
+            names.append(crop.get("_name", "unknown"))
+    return list(dict.fromkeys(names))
+
+
+def generate_risks_and_gaps(
+    frost_risk_crops: list[str], soil_is_estimated: bool, single_year_perennial_crops: list[str] | None = None
+) -> list[str]:
     """Per-rotation caveats surfaced directly in the API response, not just
     in docs -- what the brief calls 'information gaps' and 'risks that would
     need local review by farmers or agricultural experts'. Always includes
@@ -203,6 +259,9 @@ def generate_risks_and_gaps(frost_risk_crops: list[str], soil_is_estimated: bool
         "this rotation suits local conditions before adopting it.",
         "No profit, yield, or market-price dimension is scored yet -- this rotation is ranked on "
         "soil health, water, and drought resilience only, not expected income.",
+        "Erosion protection is a qualitative indicator based on crop role and root habit, not a "
+        "site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue "
+        "management all affect real erosion risk and aren't accounted for here.",
     ]
     if frost_risk_crops:
         risks.append(
@@ -213,6 +272,13 @@ def generate_risks_and_gaps(frost_risk_crops: list[str], soil_is_estimated: bool
         risks.append(
             "Soil texture, pH, and organic carbon data weren't available at this exact location; a "
             "generic estimate was used instead. A local soil test is recommended."
+        )
+    if single_year_perennial_crops:
+        risks.append(
+            f"{', '.join(single_year_perennial_crops)} is shown here for a single year, but in "
+            "practice a perennial forage crop like this is established once and kept in the ground "
+            "for several years, not replanted annually -- this rotation doesn't model establishment "
+            "cost or yield drag from doing that."
         )
     return risks
 
