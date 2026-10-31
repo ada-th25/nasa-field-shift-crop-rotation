@@ -66,7 +66,7 @@ def main():
     baseline_water_demand_mm = crop_water_demand_mm(et0, baseline_crop)
     soil_is_estimated = soil.get("soc_g_kg") is None
 
-    weights = RotationWeights(soil=0.4, water=0.4, resilience=0.2)
+    weights = RotationWeights(soil=0.3, water=0.3, resilience=0.15, revenue=0.25)
 
     def score_named_sequence(sequence):
         water_demands = [crop_water_demand_mm(et0, crop) for crop in sequence]

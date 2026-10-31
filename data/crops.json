@@ -1,5 +1,5 @@
 {
-  "_notes": "Starter agronomic matrix for Central Iowa rotation crops. kc_ini/kc_mid/kc_end are FAO-56 single crop coefficients (Table 12, sub-humid climate, RHmin~45%, u2~2m/s) and feed the FAO-56 Penman-Monteith ETc calc. nitrogen_balance_kg_ha is the net soil N credit/debit left for the following crop, not gross fixation. Seasonal values are regional typicals for sanity-checking, not used directly in scoring once Kc x ET0 is computed from live NASA POWER data. Sources: FAO Irrigation and Drainage Paper 56; USDA NRCS cover crop guides; Iowa State University Extension agronomy guides.",
+  "_notes": "Starter agronomic matrix for Central Iowa rotation crops. kc_ini/kc_mid/kc_end are FAO-56 single crop coefficients (Table 12, sub-humid climate, RHmin~45%, u2~2m/s) and feed the FAO-56 Penman-Monteith ETc calc. nitrogen_balance_kg_ha is the net soil N credit/debit left for the following crop, not gross fixation. Seasonal values are regional typicals for sanity-checking, not used directly in scoring once Kc x ET0 is computed from live NASA POWER data. typical_yield_t_ha and has_market_revenue feed the revenue_score proxy (see rotation_scoring.py) -- deliberately yield-only, no commodity price, since prices are too volatile/region-specific to cite responsibly (even USDA's own same-year figures were inconsistent across reports when checked). Sources: FAO Irrigation and Drainage Paper 56; USDA NRCS cover crop guides; Iowa State University Extension agronomy guides; USDA NASS for approximate multi-year-average yields.",
   "_baseline_crop": "maize",
   "_baseline_crop_note": "Continuous monoculture most commonly practiced in this region today; used as the 'business as usual' comparison for impact metrics, not a scored candidate itself.",
   "maize": {
@@ -16,7 +16,9 @@
     "root_depth_class": 1,
     "drought_tolerance": "low",
     "role": "cash_grain",
-    "source": "FAO-56 Table 12; Iowa State Extension"
+    "has_market_revenue": true,
+    "typical_yield_t_ha": 11.0,
+    "source": "FAO-56 Table 12; Iowa State Extension; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"
   },
   "soybean": {
     "crop_family": "Fabaceae",
@@ -32,7 +34,9 @@
     "root_depth_class": 2,
     "drought_tolerance": "medium",
     "role": "cash_grain_legume",
-    "source": "FAO-56 Table 12; USDA NRCS"
+    "has_market_revenue": true,
+    "typical_yield_t_ha": 3.4,
+    "source": "FAO-56 Table 12; USDA NRCS; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"
   },
   "winter_wheat": {
     "crop_family": "Poaceae",
@@ -48,7 +52,9 @@
     "root_depth_class": 2,
     "drought_tolerance": "medium",
     "role": "cash_grain",
-    "source": "FAO-56 Table 12"
+    "has_market_revenue": true,
+    "typical_yield_t_ha": 3.5,
+    "source": "FAO-56 Table 12; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"
   },
   "oats": {
     "crop_family": "Poaceae",
@@ -64,7 +70,9 @@
     "root_depth_class": 2,
     "drought_tolerance": "medium",
     "role": "cash_grain",
-    "source": "FAO-56 Table 12"
+    "has_market_revenue": true,
+    "typical_yield_t_ha": 2.4,
+    "source": "FAO-56 Table 12; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"
   },
   "cereal_rye_cover": {
     "crop_family": "Poaceae",
@@ -80,7 +88,9 @@
     "root_depth_class": 3,
     "drought_tolerance": "high",
     "role": "cover_crop",
-    "source": "USDA NRCS cover crop guide; FAO-56 small grains analog"
+    "has_market_revenue": false,
+    "typical_yield_t_ha": null,
+    "source": "USDA NRCS cover crop guide; FAO-56 small grains analog. Terminated as a cover before grain harvest, so it isn't sold into a grain market -- has_market_revenue is false, not a missing data point."
   },
   "alfalfa": {
     "crop_family": "Fabaceae",
@@ -96,6 +106,8 @@
     "root_depth_class": 4,
     "drought_tolerance": "high",
     "role": "perennial_forage_legume",
-    "source": "FAO-56 Table 12; Iowa State Extension"
+    "has_market_revenue": true,
+    "typical_yield_t_ha": 7.6,
+    "source": "FAO-56 Table 12; Iowa State Extension; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS hay yield), not a specific year's figure"
   }
 }

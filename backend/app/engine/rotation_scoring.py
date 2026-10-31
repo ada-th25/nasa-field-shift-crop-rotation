@@ -24,13 +24,16 @@ class EnvironmentalBaseline:
 
 @dataclass
 class RotationWeights:
-    soil: float = 0.4
-    water: float = 0.4
-    resilience: float = 0.2
+    soil: float = 0.3
+    water: float = 0.3
+    resilience: float = 0.15
+    revenue: float = 0.25
 
     def normalized(self) -> "RotationWeights":
-        total = self.soil + self.water + self.resilience
-        return RotationWeights(self.soil / total, self.water / total, self.resilience / total)
+        total = self.soil + self.water + self.resilience + self.revenue
+        return RotationWeights(
+            self.soil / total, self.water / total, self.resilience / total, self.revenue / total
+        )
 
 
 def passes_agronomic_rules(sequence: list[dict], min_family_gap_years: int = 2) -> bool:
@@ -113,6 +116,23 @@ def resilience_score(crop: dict) -> float:
     return mapping.get(crop.get("drought_tolerance", "medium"), 0.5)
 
 
+def revenue_score(crop: dict) -> float:
+    """0-1 relative revenue-potential proxy -- NOT a profit calculation.
+    Crops with no market revenue (e.g. a cover crop terminated before
+    harvest) score 0. Others score from typical_yield_t_ha, a stable
+    multi-year-average order of magnitude, deliberately NOT combined with
+    a commodity price: real prices are volatile month to month and even
+    USDA's own 2024 figures for the same crop were inconsistent across
+    reports depending on when they were pulled, so a fixed $/unit here
+    would be a precision claim this project can't back up. tanh(yield / 8)
+    scales the current crop set's yield range (2.4-11 t/ha) into 0-1
+    without needing a price."""
+    if not crop.get("has_market_revenue", True):
+        return 0.0
+    yield_t_ha = crop.get("typical_yield_t_ha") or 0.0
+    return float(np.clip(np.tanh(yield_t_ha / 8), 0, 1))
+
+
 def explain_year(
     crop: dict, prev_crop: dict | None, water_demand_mm: float, baseline: EnvironmentalBaseline
 ) -> dict:
@@ -129,6 +149,8 @@ def explain_year(
     drought_tolerance = crop.get("drought_tolerance", "medium")
     erosion_score = erosion_protection_score(crop)
     erosion_level = "high" if erosion_score >= 0.75 else "medium" if erosion_score >= 0.45 else "low"
+    rev_score = revenue_score(crop)
+    revenue_level = "none" if rev_score == 0 else "high" if rev_score >= 0.75 else "medium" if rev_score >= 0.45 else "low"
 
     sentences = []
     if n_balance > 0:
@@ -161,6 +183,10 @@ def explain_year(
 
     sentences.append(f"{drought_tolerance.capitalize()} drought tolerance.")
     sentences.append(f"{erosion_level.capitalize()} erosion protection from ground cover and residue.")
+    if revenue_level == "none":
+        sentences.append("Grown for soil benefit, not sold into a market -- no direct harvest revenue.")
+    else:
+        sentences.append(f"{revenue_level.capitalize()} relative revenue potential based on typical yield.")
 
     return {
         "nitrogen_balance_kg_ha": n_balance,
@@ -169,6 +195,7 @@ def explain_year(
         "root_diversified_from_previous": root_diversified,
         "drought_tolerance": drought_tolerance,
         "erosion_protection": erosion_level,
+        "revenue_potential": revenue_level,
         "summary": " ".join(sentences),
     }
 
@@ -251,14 +278,15 @@ def generate_risks_and_gaps(
     """Per-rotation caveats surfaced directly in the API response, not just
     in docs -- what the brief calls 'information gaps' and 'risks that would
     need local review by farmers or agricultural experts'. Always includes
-    the two gaps that apply to every rotation this engine produces, plus any
-    rotation-specific flags."""
+    the three gaps that apply to every rotation this engine produces, plus
+    any rotation-specific flags."""
     risks = [
         "Climate suitability is checked on temperature only -- day length, frost timing, rainfall "
         "seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm "
         "this rotation suits local conditions before adopting it.",
-        "No profit, yield, or market-price dimension is scored yet -- this rotation is ranked on "
-        "soil health, water, and drought resilience only, not expected income.",
+        "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it "
+        "excludes commodity price, input costs, and labour, all of which vary too much by region and "
+        "season to responsibly estimate here.",
         "Erosion protection is a qualitative indicator based on crop role and root habit, not a "
         "site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue "
         "management all affect real erosion risk and aren't accounted for here.",
@@ -301,12 +329,19 @@ def score_sequence(
         s_soil = soil_score(crop, prev_crop, baseline)
         s_water = water_score(water_demands_mm[year_idx], baseline)
         s_resilience = resilience_score(crop)
-        year_total = weights.soil * s_soil + weights.water * s_water + weights.resilience * s_resilience
+        s_revenue = revenue_score(crop)
+        year_total = (
+            weights.soil * s_soil
+            + weights.water * s_water
+            + weights.resilience * s_resilience
+            + weights.revenue * s_revenue
+        )
         year_scores.append({
             "crop": crop.get("_name", "unknown"),
             "soil_score": round(s_soil, 3),
             "water_score": round(s_water, 3),
             "resilience_score": round(s_resilience, 3),
+            "revenue_score": round(s_revenue, 3),
             "year_score": round(year_total, 3),
             "explanation": explain_year(crop, prev_crop, water_demands_mm[year_idx], baseline),
         })
