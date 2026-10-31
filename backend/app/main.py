@@ -11,7 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.data.nasa_power import fetch_power_daily
 from app.data.soilgrids import fetch_soilgrids
 from app.engine.candidates import generate_candidate_sequences
-from app.engine.climate_suitability import filter_climate_suitable_crops, frost_days_in_best_window
+from app.engine.climate_suitability import (
+    climate_mismatched_crops,
+    filter_climate_suitable_crops,
+    frost_days_in_best_window,
+)
 from app.engine.evapotranspiration import crop_water_demand_mm, et0_penman_monteith
 from app.engine.rotation_scoring import (
     EnvironmentalBaseline,
@@ -49,10 +53,12 @@ def rank_rotations(request: FarmRequest):
     soil = fetch_soilgrids(request.lat, request.lon)
     et0 = et0_penman_monteith(power_df, lat_deg=request.lat)
 
+    soil_is_estimated = soil.get("soc_g_kg") is None
     baseline = EnvironmentalBaseline(
         seasonal_precip_mm=float(power_df["PRECTOTCORR"].sum()),
         mean_root_zone_wetness=float(power_df["GWETROOT"].mean()),
         soil_organic_carbon_g_kg=soil["soc_g_kg"] or 15.0,
+        soil_carbon_is_estimated=soil_is_estimated,
     )
 
     weights = RotationWeights(**request.priority_weights)
@@ -62,9 +68,8 @@ def rank_rotations(request: FarmRequest):
     baseline_crop_name = crops.get("_baseline_crop", "maize")
     baseline_crop = {**crops[baseline_crop_name], "_name": baseline_crop_name}
     baseline_water_demand_mm = crop_water_demand_mm(et0, baseline_crop)
-    soil_is_estimated = soil.get("soc_g_kg") is None
 
-    def score_named_sequence(sequence: list[dict]) -> dict:
+    def score_named_sequence(sequence: list[dict], is_current: bool = False) -> dict:
         water_demands = [crop_water_demand_mm(et0, crop) for crop in sequence]
         result = score_sequence(sequence, baseline, water_demands, weights)
         result["impact_metrics"] = compute_impact_metrics(
@@ -73,8 +78,12 @@ def rank_rotations(request: FarmRequest):
         frost_risk_crops = list(dict.fromkeys(
             crop["_name"] for crop in sequence if frost_days_in_best_window(power_df, crop) > 0
         ))
+        # Recommended candidates are already climate-filtered upstream, so this
+        # is always empty for them; current_rotation skips that filter on
+        # purpose (it's what the farmer already does), so it needs its own check.
+        mismatched = climate_mismatched_crops(sequence, power_df) if is_current else []
         result["risks_and_gaps"] = generate_risks_and_gaps(
-            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence)
+            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence), mismatched
         )
         return result
 
@@ -87,7 +96,7 @@ def rank_rotations(request: FarmRequest):
         if unknown:
             raise HTTPException(status_code=400, detail=f"Unknown crop(s) in current_rotation: {unknown}")
         current_sequence = [{**crops[name], "_name": name} for name in request.current_rotation]
-        current_rotation = score_named_sequence(current_sequence)
+        current_rotation = score_named_sequence(current_sequence, is_current=True)
 
     return FarmResponse(
         soil=soil,

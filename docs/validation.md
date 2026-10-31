@@ -87,3 +87,29 @@ is independently supported by a real long-term Iowa State study, right
 down to alfalfa-and-corn showing up in both. The remaining gaps (alfalfa
 treated as an annual, revenue as yield-only) are honest, explainable, and
 each has a concrete next step rather than being a hidden flaw.
+
+## Two bugs this validation pass caught before they reached a demo
+
+Cross-checking real baseline numbers across the three stress-test sites
+(while preparing a pitch report) surfaced two real issues, now fixed:
+
+1. **Missing soil data silently scored as worst-case, not neutral.** When
+   SoilGrids returns no data (e.g. Iceland), the fallback organic-carbon
+   value (15 g/kg) happened to exactly equal the "degraded soil" threshold
+   used in scoring, so a missing-data site always got zero carbon headroom
+   — the worst possible score on that component, disguised as real data.
+   Fixed: `EnvironmentalBaseline.soil_carbon_is_estimated` now makes
+   `soil_score` use a neutral 0.5 instead of computing from the fallback
+   value. This changed Iceland's continuous-maize baseline RSI from 1.612
+   to 1.713 — a real, meaningful difference the earlier number was hiding.
+2. **The farmer's stated "current rotation" skipped the climate check
+   entirely.** `current_rotation` is intentionally never filtered the way
+   recommended candidates are (it's what the farmer already does, not a
+   suggestion we're vetting) — but that meant a farmer entering a crop that
+   can't survive at their site got a score as if it could. Fixed: the API
+   now runs a climate-mismatch check specifically on `current_rotation` and
+   surfaces it in that rotation's `risks_and_gaps` (e.g. "maize doesn't
+   appear to have a viable growing window at this site").
+
+Both are the kind of thing we'd rather report ourselves than have a judge
+find live.

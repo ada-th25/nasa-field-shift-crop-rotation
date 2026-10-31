@@ -12,7 +12,11 @@ from pathlib import Path
 from app.data.nasa_power import fetch_power_daily
 from app.data.soilgrids import fetch_soilgrids
 from app.engine.candidates import generate_candidate_sequences
-from app.engine.climate_suitability import filter_climate_suitable_crops, frost_days_in_best_window
+from app.engine.climate_suitability import (
+    climate_mismatched_crops,
+    filter_climate_suitable_crops,
+    frost_days_in_best_window,
+)
 from app.engine.evapotranspiration import crop_water_demand_mm, et0_penman_monteith
 from app.engine.rotation_scoring import (
     EnvironmentalBaseline,
@@ -44,10 +48,12 @@ def main():
     et0 = et0_penman_monteith(power_df, lat_deg=FARM_LAT)
     print(f"  Mean ET0: {et0.mean():.2f} mm/day, annual total: {et0.sum():.0f} mm")
 
+    soil_is_estimated = soil.get("soc_g_kg") is None
     baseline = EnvironmentalBaseline(
         seasonal_precip_mm=float(power_df["PRECTOTCORR"].sum()),
         mean_root_zone_wetness=float(power_df["GWETROOT"].mean()),
         soil_organic_carbon_g_kg=soil["soc_g_kg"] or 15.0,
+        soil_carbon_is_estimated=soil_is_estimated,
     )
     print(f"  Baseline: {baseline}")
 
@@ -64,11 +70,10 @@ def main():
     baseline_crop_name = crops.get("_baseline_crop", "maize")
     baseline_crop = {**crops[baseline_crop_name], "_name": baseline_crop_name}
     baseline_water_demand_mm = crop_water_demand_mm(et0, baseline_crop)
-    soil_is_estimated = soil.get("soc_g_kg") is None
 
     weights = RotationWeights(soil=0.3, water=0.3, resilience=0.15, revenue=0.25)
 
-    def score_named_sequence(sequence):
+    def score_named_sequence(sequence, is_current=False):
         water_demands = [crop_water_demand_mm(et0, crop) for crop in sequence]
         result = score_sequence(sequence, baseline, water_demands, weights)
         result["impact_metrics"] = compute_impact_metrics(
@@ -77,8 +82,9 @@ def main():
         frost_risk_crops = list(dict.fromkeys(
             crop["_name"] for crop in sequence if frost_days_in_best_window(power_df, crop) > 0
         ))
+        mismatched = climate_mismatched_crops(sequence, power_df) if is_current else []
         result["risks_and_gaps"] = generate_risks_and_gaps(
-            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence)
+            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence), mismatched
         )
         return result
 
@@ -86,8 +92,10 @@ def main():
     results.sort(key=lambda r: r["rsi"], reverse=True)
 
     print(f"\nExisting rotation (continuous {baseline_crop_name}) for comparison:")
-    current = score_named_sequence([baseline_crop] * 3)
+    current = score_named_sequence([baseline_crop] * 3, is_current=True)
     print(f"  RSI {current['rsi']:.3f}  {' -> '.join(current['sequence'])}")
+    for risk in current["risks_and_gaps"]:
+        print(f"      risk/gap: {risk}")
 
     print(f"\nTop 5 rotations (vs. continuous {baseline_crop_name} baseline):")
     for r in results[:5]:

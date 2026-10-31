@@ -20,6 +20,12 @@ class EnvironmentalBaseline:
     mean_root_zone_wetness: float  # GWETROOT, 0-1 fraction of saturation
     soil_organic_carbon_g_kg: float
     soil_degradation_baseline_g_kg: float = 15.0  # a reasonable depleted-soil reference
+    soil_carbon_is_estimated: bool = False
+    """True when soil_organic_carbon_g_kg is a fallback default, not a real
+    SoilGrids reading (e.g. SoilGrids returned null at this site). The
+    fallback value used to happen to equal soil_degradation_baseline_g_kg,
+    which silently scored every missing-data site as maximally degraded --
+    this flag lets soil_score treat a missing reading as neutral instead."""
 
 
 @dataclass
@@ -77,8 +83,11 @@ def soil_score(crop: dict, prev_crop: dict | None, baseline: EnvironmentalBaseli
     diversity bonus vs. the previous crop + erosion protection."""
     n_component = np.tanh(max(crop["nitrogen_balance_kg_ha"], 0) / 100)
 
-    carbon_headroom = 1 - min(baseline.soil_organic_carbon_g_kg / baseline.soil_degradation_baseline_g_kg, 1)
-    carbon_component = np.clip(carbon_headroom, 0, 1)
+    if baseline.soil_carbon_is_estimated:
+        carbon_component = 0.5  # neutral: no real reading to score against
+    else:
+        carbon_headroom = 1 - min(baseline.soil_organic_carbon_g_kg / baseline.soil_degradation_baseline_g_kg, 1)
+        carbon_component = np.clip(carbon_headroom, 0, 1)
 
     root_bonus = 0.0
     if prev_crop is not None and crop["root_depth_class"] != prev_crop["root_depth_class"]:
@@ -273,7 +282,10 @@ def single_year_perennials(sequence: list[dict]) -> list[str]:
 
 
 def generate_risks_and_gaps(
-    frost_risk_crops: list[str], soil_is_estimated: bool, single_year_perennial_crops: list[str] | None = None
+    frost_risk_crops: list[str],
+    soil_is_estimated: bool,
+    single_year_perennial_crops: list[str] | None = None,
+    climate_mismatched_crops: list[dict] | None = None,
 ) -> list[str]:
     """Per-rotation caveats surfaced directly in the API response, not just
     in docs -- what the brief calls 'information gaps' and 'risks that would
@@ -308,6 +320,14 @@ def generate_risks_and_gaps(
             "for several years, not replanted annually -- this rotation doesn't model establishment "
             "cost or yield drag from doing that."
         )
+    if climate_mismatched_crops:
+        for m in climate_mismatched_crops:
+            lo, hi = m["crop_temp_tolerance_c"]
+            risks.append(
+                f"{m['crop']} doesn't appear to have a viable growing window at this site (site mean "
+                f"~{m['site_mean_temp_c']}C vs. a tolerance of [{lo}, {hi}]C) -- this score may not "
+                "reflect whether this crop can actually be grown here."
+            )
     return risks
 
 

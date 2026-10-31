@@ -60,6 +60,31 @@ def frost_days_in_best_window(power_df: pd.DataFrame, crop: dict, frost_threshol
     return int((window_min_temps < frost_threshold_c).sum())
 
 
+def climate_mismatched_crops(sequence: list[dict], power_df: pd.DataFrame) -> list[dict]:
+    """Like filter_climate_suitable_crops, but for a single already-chosen
+    sequence rather than the whole crop pool -- used for a farmer's stated
+    current_rotation, which (unlike recommended candidates) is never passed
+    through filter_climate_suitable_crops, since it's what they're already
+    doing, not something we're suggesting. Without this check, a farmer
+    could enter a crop that can't actually survive at their site and the
+    comparison would silently score it as if it could."""
+    mismatched = []
+    seen = set()
+    for crop in sequence:
+        name = crop.get("_name", "unknown")
+        if name in seen:
+            continue
+        seen.add(name)
+        mean_temp = best_growing_window_mean_temp_c(power_df, crop)
+        if not is_climate_suitable(crop, mean_temp):
+            mismatched.append({
+                "crop": name,
+                "site_mean_temp_c": round(mean_temp, 1),
+                "crop_temp_tolerance_c": [crop["min_temp_c"], crop["max_temp_c"]],
+            })
+    return mismatched
+
+
 def filter_climate_suitable_crops(crops: dict, power_df: pd.DataFrame) -> tuple[dict, list[dict]]:
     """Split a crops dict (as loaded from crops.json, including its `_`
     metadata keys) into (suitable_crops, excluded) for this site's weather.
