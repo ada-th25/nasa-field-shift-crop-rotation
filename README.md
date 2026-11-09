@@ -1,5 +1,12 @@
 # nasa-field-shift-crop-rotation
 
+## Docs
+
+- [Pitch report](docs/pitch-report.md) — the full write-up for judging: what we built, sources, methodology, validation, charts, limitations.
+- [API contract](docs/api-contract.md)
+- [Data science approach](docs/data-science-approach.md)
+- [Validation](docs/validation.md)
+
 ## Repo structure
 
 ```text
