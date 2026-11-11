@@ -78,11 +78,17 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
         "nitrogen_fertilizer_avoided_kg_ha": 600,
         "water_saved_mm": -1164.5,
         "water_saved_pct": -136.0,
+        "bare_field_days_avoided": 430,
         "sdg_tags": [
           {
             "sdg": "SDG 13",
             "label": "Climate Action",
             "rationale": "Avoids ~600 kg/ha of synthetic nitrogen vs. continuous maize, reducing fertilizer-linked emissions."
+          },
+          {
+            "sdg": "SDG 15",
+            "label": "Life on Land",
+            "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture."
           }
         ]
       },
@@ -90,6 +96,7 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
         "Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.",
         "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.",
         "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.",
+        "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested).",
         "alfalfa: the best available growing window in the fetched weather data still included sub-zero days. Check local frost dates before planting.",
         "alfalfa is shown here for a single year, but in practice a perennial forage crop like this is established once and kept in the ground for several years, not replanted annually -- this rotation doesn't model establishment cost or yield drag from doing that."
       ]
@@ -99,7 +106,7 @@ All fields are optional except `lat`/`lon` — the rest have defaults shown abov
     "sequence": ["maize"],
     "rsi": 0.595,
     "year_breakdown": [ "...same shape as top_rotations[].year_breakdown..." ],
-    "impact_metrics": { "baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 0, "water_saved_mm": 0.0, "water_saved_pct": 0.0, "sdg_tags": [] },
+    "impact_metrics": { "baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 0, "water_saved_mm": 0.0, "water_saved_pct": 0.0, "bare_field_days_avoided": 0, "sdg_tags": [] },
     "risks_and_gaps": [ "...the standing always-on gaps, no rotation-specific ones since it's a single-crop monoculture..." ]
   }
 }
@@ -123,8 +130,10 @@ Note: this is the engine's actual current top pick for the Iowa demo site (live 
 | `top_rotations[].impact_metrics` | object | This rotation vs. a continuous-monoculture baseline (currently `data/crops.json`'s `_baseline_crop`, "maize"), in real units rather than abstract scores. |
 | `impact_metrics.water_saved_mm`, `.water_saved_pct` | float | Water demand avoided vs. the baseline over the full sequence. Can be negative (the rotation uses *more* water than the baseline, e.g. a sequence including alfalfa) — don't clamp this to zero in the UI, a negative value is a real and useful signal. |
 | `impact_metrics.nitrogen_fertilizer_avoided_kg_ha` | float | Net synthetic nitrogen avoided vs. the baseline, summed over the sequence. Can also be negative. |
+| `impact_metrics.bare_field_days_avoided` | float | Estimated days per year without living crop cover, summed over the sequence and compared to the baseline — positive means this rotation leaves the field bare for fewer days overall (e.g. because it includes a perennial or cover crop), negative means more. Derived from each crop's `season_length_days` in `data/crops.json`, not an actual planting calendar — see the matching `risks_and_gaps` caveat for what this does and doesn't account for. |
+| `year_breakdown[].bare_field_days` | int | Same estimate for a single year of the rotation: `365 - season_length_days` for that year's crop, floored at 0. A perennial (`season_length_days: 365`, e.g. alfalfa) always shows 0. |
 | `impact_metrics.sdg_tags` | array | Zero or more of `{sdg, label, rationale}`, only included when the rotation actually improves on the baseline for that metric — this list can be empty for a rotation that doesn't outperform the baseline on any tracked metric. Don't assume every rotation has at least one tag. |
-| `top_rotations[].risks_and_gaps` | array of strings | Plain-language caveats for this specific rotation — what the challenge brief calls "information gaps" and "risks that would need local review." Always includes three general caveats (climate check is temperature-only; revenue potential is a yield-based proxy, not real profit; erosion protection is qualitative, not a RUSLE model); can also include a frost-risk note naming specific crops if the best growing window found in the weather data still had sub-zero days, a soil-data-estimated note if SoilGrids returned null at this site, a note if a perennial crop (e.g. alfalfa) appears for only one year in the sequence (real perennials are grown for several consecutive years, not replanted annually), and — for `current_rotation` only — a note naming any crop that doesn't appear to have a viable growing window at this site at all. Never empty. |
+| `top_rotations[].risks_and_gaps` | array of strings | Plain-language caveats for this specific rotation — what the challenge brief calls "information gaps" and "risks that would need local review." Always includes four general caveats (climate check is temperature-only; revenue potential is a yield-based proxy, not real profit; erosion protection is qualitative, not a RUSLE model; bare-field days are a season-length estimate, not a planting calendar); can also include a frost-risk note naming specific crops if the best growing window found in the weather data still had sub-zero days, a soil-data-estimated note if SoilGrids returned null at this site, a note if a perennial crop (e.g. alfalfa) appears for only one year in the sequence (real perennials are grown for several consecutive years, not replanted annually), and — for `current_rotation` only — a note naming any crop that doesn't appear to have a viable growing window at this site at all. Never empty. |
 | `current_rotation[].risks_and_gaps` | array of strings | Same shape as above, plus the climate-mismatch check: `current_rotation` is never passed through the climate-suitability filter (it's what the farmer is already doing, not a candidate we're filtering), so this is the only place that check runs. If a farmer enters a crop with no viable growing window at their site, this flags it explicitly rather than silently scoring it as if it were viable. |
 | `excluded_crops` | array | Crops from `data/crops.json` dropped from consideration at this site for being climate-unsuitable (e.g. too cold for maize), each as `{crop, site_mean_temp_c, crop_temp_tolerance_c}`. Worth surfacing in the UI ("X wasn't considered because...") rather than hiding — it's evidence the recommendation is site-checked, not generic. Can be empty. |
 | `current_rotation` | object or `null` | Only present if the request included `current_rotation`. Same shape as one entry of `top_rotations`, so the UI can render the farmer's existing practice alongside the recommendations for direct comparison — this satisfies the brief's ask to "compare at least three rotation strategies, including the existing rotation." `null` if the request didn't supply one. |

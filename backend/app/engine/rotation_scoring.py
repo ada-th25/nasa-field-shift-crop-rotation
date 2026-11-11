@@ -78,6 +78,21 @@ def erosion_protection_score(crop: dict) -> float:
     return float(np.clip(base + root_bonus, 0, 1))
 
 
+def bare_field_days_in_year(crop: dict) -> int:
+    """Estimated days per year this crop leaves the field without living
+    cover: 365 minus its own season length. A deliberately simple proxy for
+    "when is this field typically bare", not a planting-calendar model --
+    it doesn't know the crop's actual sowing date, doesn't credit post-
+    harvest residue (which still gives some protection after the "season"
+    technically ends), and doesn't know whether a *different* crop (e.g. a
+    cover crop slotted into the same rotation year) fills that gap in
+    practice. See the matching risks_and_gaps caveat. Perennials
+    (season_length_days=365, e.g. alfalfa) score 0 by construction, which
+    is accurate: they hold the field year-round once established."""
+    season_length = crop.get("season_length_days", 365)
+    return max(0, 365 - int(season_length))
+
+
 def soil_score(crop: dict, prev_crop: dict | None, baseline: EnvironmentalBaseline) -> float:
     """0-1 score: nitrogen contribution + organic carbon headroom + root
     diversity bonus vs. the previous crop + erosion protection."""
@@ -160,6 +175,7 @@ def explain_year(
     erosion_level = "high" if erosion_score >= 0.75 else "medium" if erosion_score >= 0.45 else "low"
     rev_score = revenue_score(crop)
     revenue_level = "none" if rev_score == 0 else "high" if rev_score >= 0.75 else "medium" if rev_score >= 0.45 else "low"
+    bare_days = bare_field_days_in_year(crop)
 
     sentences = []
     if n_balance > 0:
@@ -196,6 +212,14 @@ def explain_year(
         sentences.append("Grown for soil benefit, not sold into a market -- no direct harvest revenue.")
     else:
         sentences.append(f"{revenue_level.capitalize()} relative revenue potential based on typical yield.")
+
+    if bare_days == 0:
+        sentences.append("Holds the field year-round, leaving no bare-soil window.")
+    else:
+        sentences.append(
+            f"Leaves the field without living cover for an estimated ~{bare_days} days/year outside "
+            "its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."
+        )
 
     return {
         "nitrogen_balance_kg_ha": n_balance,
@@ -236,6 +260,12 @@ def compute_impact_metrics(
     water_saved_mm = round(baseline_water_total - rotation_water_total, 1)
     water_saved_pct = round(100 * water_saved_mm / baseline_water_total, 1) if baseline_water_total else 0.0
 
+    rotation_bare_days_total = sum(bare_field_days_in_year(c) for c in sequence)
+    baseline_bare_days_total = bare_field_days_in_year(baseline_crop) * length
+    # positive = this rotation leaves the field bare for fewer days than the baseline, same sign
+    # convention as water_saved_mm; negative means this rotation is more bare than the baseline.
+    bare_field_days_avoided = baseline_bare_days_total - rotation_bare_days_total
+
     sdg_tags = []
     if water_saved_mm > 0:
         sdg_tags.append({
@@ -254,12 +284,21 @@ def compute_impact_metrics(
             "label": "Life on Land",
             "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture.",
         })
+    if bare_field_days_avoided > 0 and not any(t["sdg"] == "SDG 15" for t in sdg_tags):
+        sdg_tags.append({
+            "sdg": "SDG 15",
+            "label": "Life on Land",
+            "rationale": f"Leaves the field without living cover ~{bare_field_days_avoided:.0f} fewer "
+            f"days over {length} years than continuous {baseline_crop['_name']}, reducing the window "
+            "soil is exposed to erosion and nutrient leaching between seasons.",
+        })
 
     return {
         "baseline": f"continuous {baseline_crop['_name']}",
         "nitrogen_fertilizer_avoided_kg_ha": nitrogen_fertilizer_avoided_kg_ha,
         "water_saved_mm": water_saved_mm,
         "water_saved_pct": water_saved_pct,
+        "bare_field_days_avoided": bare_field_days_avoided,
         "sdg_tags": sdg_tags,
     }
 
@@ -302,6 +341,10 @@ def generate_risks_and_gaps(
         "Erosion protection is a qualitative indicator based on crop role and root habit, not a "
         "site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue "
         "management all affect real erosion risk and aren't accounted for here.",
+        "Bare-field days (days/year without living cover) are estimated from each crop's typical "
+        "season length, not an actual planting calendar -- they don't account for post-harvest "
+        "residue (which still offers some protection), or for a different crop filling that gap in "
+        "practice (e.g. a cover crop planted after a cash grain is harvested).",
     ]
     if frost_risk_crops:
         risks.append(
@@ -363,6 +406,7 @@ def score_sequence(
             "resilience_score": round(s_resilience, 3),
             "revenue_score": round(s_revenue, 3),
             "year_score": round(year_total, 3),
+            "bare_field_days": bare_field_days_in_year(crop),
             "explanation": explain_year(crop, prev_crop, water_demands_mm[year_idx], baseline),
         })
 

@@ -7,6 +7,8 @@ import pytest
 from app.engine.rotation_scoring import (
     EnvironmentalBaseline,
     RotationWeights,
+    bare_field_days_in_year,
+    compute_impact_metrics,
     erosion_protection_score,
     generate_risks_and_gaps,
     passes_agronomic_rules,
@@ -20,22 +22,22 @@ from app.engine.rotation_scoring import (
 MAIZE = {
     "crop_family": "Poaceae", "nitrogen_balance_kg_ha": -150, "root_type": "fibrous_shallow",
     "root_depth_class": 1, "drought_tolerance": "low", "role": "cash_grain",
-    "has_market_revenue": True, "typical_yield_t_ha": 11.0, "_name": "maize",
+    "has_market_revenue": True, "typical_yield_t_ha": 11.0, "season_length_days": 150, "_name": "maize",
 }
 SOYBEAN = {
     "crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 40, "root_type": "taproot_medium",
     "root_depth_class": 2, "drought_tolerance": "medium", "role": "cash_grain_legume",
-    "has_market_revenue": True, "typical_yield_t_ha": 3.4, "_name": "soybean",
+    "has_market_revenue": True, "typical_yield_t_ha": 3.4, "season_length_days": 120, "_name": "soybean",
 }
 RYE_COVER = {
     "crop_family": "Poaceae", "nitrogen_balance_kg_ha": 10, "root_type": "fibrous_deep",
     "root_depth_class": 3, "drought_tolerance": "high", "role": "cover_crop",
-    "has_market_revenue": False, "typical_yield_t_ha": None, "_name": "cereal_rye_cover",
+    "has_market_revenue": False, "typical_yield_t_ha": None, "season_length_days": 150, "_name": "cereal_rye_cover",
 }
 ALFALFA = {
     "crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 150, "root_type": "taproot_deep",
     "root_depth_class": 4, "drought_tolerance": "high", "role": "perennial_forage_legume",
-    "has_market_revenue": True, "typical_yield_t_ha": 7.6, "_name": "alfalfa",
+    "has_market_revenue": True, "typical_yield_t_ha": 7.6, "season_length_days": 365, "_name": "alfalfa",
 }
 LENTIL = {
     "crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 25, "root_type": "taproot_medium",
@@ -135,6 +137,32 @@ class TestErosionProtectionScore:
         assert erosion_protection_score(RYE_COVER) > erosion_protection_score(SOYBEAN)
 
 
+class TestBareFieldDays:
+    def test_perennial_has_zero_bare_days(self):
+        assert bare_field_days_in_year(ALFALFA) == 0
+
+    def test_short_season_crop_has_more_bare_days(self):
+        # oats (120-day season in this fixture set) should leave more bare
+        # days than a longer-season crop like winter wheat-style cover.
+        short_season = {"season_length_days": 120}
+        long_season = {"season_length_days": 240}
+        assert bare_field_days_in_year(short_season) > bare_field_days_in_year(long_season)
+
+    def test_never_negative_for_full_year_season(self):
+        assert bare_field_days_in_year({"season_length_days": 400}) == 0
+
+    def test_impact_metrics_credit_lower_bare_days_than_baseline(self):
+        # an alfalfa-containing rotation should show fewer cumulative bare
+        # days than a continuous-maize baseline over the same length.
+        metrics = compute_impact_metrics(
+            sequence=[ALFALFA, MAIZE, ALFALFA],
+            water_demands_mm=[300, 500, 300],
+            baseline_crop=MAIZE,
+            baseline_water_demand_mm=500,
+        )
+        assert metrics["bare_field_days_avoided"] > 0
+
+
 class TestSingleYearPerennials:
     def test_flags_isolated_perennial(self):
         assert single_year_perennials([RYE_COVER, ALFALFA, RYE_COVER]) == ["alfalfa"]
@@ -147,9 +175,9 @@ class TestSingleYearPerennials:
 
 
 class TestRisksAndGaps:
-    def test_always_includes_three_standing_caveats(self):
+    def test_always_includes_four_standing_caveats(self):
         risks = generate_risks_and_gaps(frost_risk_crops=[], soil_is_estimated=False)
-        assert len(risks) == 3
+        assert len(risks) == 4
 
     def test_appends_climate_mismatch_note(self):
         mismatch = [{"crop": "maize", "site_mean_temp_c": 5.0, "crop_temp_tolerance_c": [10, 35]}]

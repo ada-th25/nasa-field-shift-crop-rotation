@@ -94,6 +94,7 @@ def main():
     print(f"\nExisting rotation (continuous {baseline_crop_name}) for comparison:")
     current = score_named_sequence([baseline_crop] * 3, is_current=True)
     print(f"  RSI {current['rsi']:.3f}  {' -> '.join(current['sequence'])}")
+    print(f"      bare-field days avoided: {current['impact_metrics']['bare_field_days_avoided']:.0f} (vs. itself, always 0)")
     for risk in current["risks_and_gaps"]:
         print(f"      risk/gap: {risk}")
 
@@ -104,6 +105,7 @@ def main():
         print(
             f"      water saved: {impact['water_saved_mm']:.0f} mm ({impact['water_saved_pct']:.0f}%), "
             f"N fertilizer avoided: {impact['nitrogen_fertilizer_avoided_kg_ha']:.0f} kg/ha, "
+            f"bare-field days avoided: {impact['bare_field_days_avoided']:.0f}, "
             f"SDGs: {', '.join(t['sdg'] for t in impact['sdg_tags']) or 'none'}"
         )
         for risk in r["risks_and_gaps"]:

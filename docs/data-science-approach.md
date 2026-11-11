@@ -41,6 +41,31 @@ soil-moisture signal — same API call as everything else, no extra auth.
 SMAP/NDVI are still good stretch goals if we have time left after the core
 tool works end to end.
 
+**Satellite vs. ground-based measurement, and why this matters here**:
+every input this engine uses (NASA POWER, SoilGrids) is itself a *modelled*
+estimate, not a direct field reading — POWER's weather variables come from
+reanalysis models (MERRA-2/GEOS) calibrated against a mix of satellite and
+ground-station observations, and SoilGrids is a machine-learning prediction
+from sparse global soil survey points, not a sample taken from this
+specific field. That's exactly why every rotation's `risks_and_gaps`
+recommends a local soil test and an agronomist's confirmation before
+adopting it: this tool narrows down *plausible* options using
+Earth-observation-scale data, a real soil sample and a farmer's lived
+experience of their own field are a finer-grained source of truth than
+any satellite-derived product, including the ones (SMAP, NDVI) this
+project didn't get to.
+
+**On pest and disease cycles**: the brief calls out "opportunities for
+rotations that could interrupt pest cycles" as something a tool like this
+might highlight. This project doesn't model pest/disease pressure directly
+(no pest incidence data source was in scope), but the hard agronomic rule
+that rejects repeating a crop family within a 2-year gap
+(`passes_agronomic_rules`) exists specifically because continuous
+same-family planting is what lets family-specific soil pests and diseases
+(e.g. soybean cyst nematode, corn rootworm) build up — so every candidate
+rotation this engine proposes already satisfies that goal by
+construction, even though it isn't scored or surfaced as its own metric.
+
 ## Why the scoring math is simpler than the original plan
 
 The original sketch had a sigmoid-based RSI formula with an exponential
@@ -72,6 +97,15 @@ on what's literature-backed vs. my own construction:
   (Herridge et al. 2008, *Plant and Soil*), though the specific per-crop
   numbers in `crops.json` came from USDA/Iowa State extension guidance, not
   that paper directly.
+- **Bare-field days** (`bare_field_days_in_year`, `impact_metrics.bare_field_days_avoided`)
+  is entirely my own construction: `365 - season_length_days`, a proxy for
+  how long a field sits without living cover each year. The *motivation*
+  is real and literature-backed (bare soil between crops is a well-known
+  erosion and nutrient-leaching risk window — this is the whole reason
+  cover crops exist as a practice), but the specific number is a rough
+  estimate from typical season length, not an actual farm planting
+  calendar, and doesn't credit post-harvest residue. Flagged as such in
+  every response's `risks_and_gaps`.
 
 ## The crop dataset (`data/crops.json`)
 
