@@ -107,6 +107,16 @@ Note: soil pH is not a tracked field in this engine. If the frontend (crop
 "cards") displays a pH value per crop, that number comes from the frontend
 team's own research, not from `crops.json`.
 
+**Card-to-engine mapping**: the frontend's TCG-style crop cards cover more
+crops than the engine does. Only these 8 cards correspond to a real
+`crops.json` entry and can actually be recommended: wheat (`winter_wheat`),
+rye (`cereal_rye_cover`), oats, maize, lentils, chickpea, soybean, alfalfa
+(no card yet as of this note -- worth prioritizing). The other 8 cards
+(rice, sunflower, cotton, rapeseed, beetroot, carrots, potatoes, coffee,
+tea) are drawn but have no backing data, so the engine will never
+recommend them -- fine as unused art for the demo, but worth knowing if a
+judge asks why a given card never shows up in a result.
+
 ## What's deliberately not built yet
 
 - **No profit/yield dimension.** The scoring only covers soil health,
