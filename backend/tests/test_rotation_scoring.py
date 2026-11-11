@@ -37,6 +37,16 @@ ALFALFA = {
     "root_depth_class": 4, "drought_tolerance": "high", "role": "perennial_forage_legume",
     "has_market_revenue": True, "typical_yield_t_ha": 7.6, "_name": "alfalfa",
 }
+LENTIL = {
+    "crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 25, "root_type": "taproot_medium",
+    "root_depth_class": 2, "drought_tolerance": "medium", "role": "cash_grain_legume",
+    "has_market_revenue": True, "typical_yield_t_ha": 1.2, "_name": "lentil",
+}
+CHICKPEA = {
+    "crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 35, "root_type": "taproot_deep",
+    "root_depth_class": 3, "drought_tolerance": "high", "role": "cash_grain_legume",
+    "has_market_revenue": True, "typical_yield_t_ha": 1.4, "_name": "chickpea",
+}
 
 
 def baseline(**overrides):
@@ -147,6 +157,30 @@ class TestRisksAndGaps:
             frost_risk_crops=[], soil_is_estimated=False, climate_mismatched_crops=mismatch
         )
         assert any("maize" in r and "viable growing window" in r for r in risks)
+
+
+class TestNewLegumes:
+    """Regression tests for lentil/chickpea, added after crops.json was
+    expanded for the frontend's crop-card set (see docs/data-science-approach.md)."""
+
+    def test_bounded_zero_to_one(self):
+        for crop in (LENTIL, CHICKPEA):
+            assert 0.0 <= soil_score(crop, None, baseline()) <= 1.0
+            assert 0.0 <= revenue_score(crop) <= 1.0
+
+    def test_same_family_as_soybean_and_alfalfa_triggers_gap_rule(self):
+        # lentil/chickpea are Fabaceae, same as soybean/alfalfa -- repeating
+        # any of these back-to-back should be rejected just like soybean is.
+        assert not passes_agronomic_rules([LENTIL, CHICKPEA], min_family_gap_years=2)
+        assert not passes_agronomic_rules([CHICKPEA, SOYBEAN], min_family_gap_years=2)
+
+    def test_allowed_after_a_non_legume_gap(self):
+        assert passes_agronomic_rules([LENTIL, MAIZE, CHICKPEA], min_family_gap_years=2)
+
+    def test_lower_yield_scores_lower_than_soybean(self):
+        # both are low-yield pulses relative to the existing row crops
+        assert revenue_score(LENTIL) < revenue_score(SOYBEAN)
+        assert revenue_score(CHICKPEA) < revenue_score(SOYBEAN)
 
 
 class TestRotationWeights:

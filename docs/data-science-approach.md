@@ -75,24 +75,37 @@ on what's literature-backed vs. my own construction:
 
 ## The crop dataset (`data/crops.json`)
 
-Six crops for a Central Iowa rotation: maize, soybean, winter wheat, oats,
-cereal rye (cover crop), alfalfa. Each has nitrogen balance, water
-requirement (Kc curve + season length), temperature tolerance, root depth
-class, drought tolerance, and a cited source.
+Eight crops: maize, soybean, winter wheat, oats, cereal rye (cover crop),
+alfalfa, lentil, chickpea. Each has nitrogen balance, water requirement (Kc
+curve + season length), temperature tolerance, root depth class, drought
+tolerance, and a cited source. The first six are Central Iowa rotation
+staples; lentil and chickpea were added afterwards as additional legume
+break-crop options (not Iowa-typical, but agronomically valid) to widen the
+candidate pool and give the frontend's crop-card set something to match
+against.
 
 There's no single clean global API with all of these fields together.
 Closest real sources if we expand the crop list or add other regions:
 - **FAO-56 Tables 12/22** — Kc values and rooting depth, ~80 crops, PDF
-  tables (what I transcribed from for the current 6).
+  tables (what the current 8 were transcribed from).
 - **FAO EcoCrop**, now folded into **GAEZ v4** (gaez.fao.org) — temperature/
   rainfall/pH tolerance for 2,500+ species, but distributed as GIS raster
   data, not a simple per-crop lookup; would need extraction code.
 - **Herridge et al. 2008** — nitrogen fixation rates by legume type.
+- **GRDC (Australia) pulse grow notes** — used for lentil/chickpea nitrogen
+  credit and climate tolerance, since those two aren't covered as well by
+  the US-focused sources above; published credit figures disagree between
+  studies, so those two values are flagged in `crops.json` as rough
+  order-of-magnitude estimates, not settled numbers.
 
-Recommendation: keep hand-curating against these three named sources
-(systematic, traceable) rather than trying to build a raster-extraction
-pipeline against GAEZ for a handful of crops — not worth the time unless we
-need a much larger crop list.
+Recommendation: keep hand-curating against these named sources (systematic,
+traceable) rather than trying to build a raster-extraction pipeline against
+GAEZ for a handful of crops — not worth the time unless we need a much
+larger crop list.
+
+Note: soil pH is not a tracked field in this engine. If the frontend (crop
+"cards") displays a pH value per crop, that number comes from the frontend
+team's own research, not from `crops.json`.
 
 ## What's deliberately not built yet
 
