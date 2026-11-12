@@ -1,0 +1,33 @@
+*{box-sizing:border-box}
+body{margin:0;background:#1a1c2c;color:#f4f4f4;font:bold 14px/1.45 "Courier New",monospace}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#2a2d4a;border-bottom:4px solid #0d0e1a}
+header b{color:#ffd23a;letter-spacing:2px;margin-right:auto}
+button{font:inherit;background:#f8f0d0;color:#222;border:3px solid #222;box-shadow:inset -3px -3px #b8a878,3px 3px #000;padding:8px 12px;cursor:pointer;text-transform:uppercase}
+button:hover:not(:disabled){background:#ffe680}button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #ff5a3a}
+main{max-width:760px;margin:0 auto;padding:12px}
+.box{background:#f8f0d0;color:#222;border:4px solid #222;box-shadow:0 0 0 4px #5a6ab8;padding:14px;margin:6px 4px}
+h2,h3{margin:.2em 0}h3{color:#2a4a98;border-bottom:2px dashed #b8a878;margin-top:1em}
+#f{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{display:flex;flex-direction:column;font-size:12px;gap:2px}
+input,select{font:inherit;padding:6px;border:3px solid #222;background:#fff;min-width:0}
+@media(max-width:520px){#f{grid-template-columns:1fr}}
+#stage{position:relative;margin:0 4px}
+#cv,.grid img{width:100%;display:block;image-rendering:pixelated;border:4px solid #222}
+#cv{aspect-ratio:160/96}
+.hp{position:absolute;background:#f8f0d0;color:#222;border:3px solid #222;padding:3px 8px;font-size:12px;min-width:38%}
+#eb{top:4%;left:3%}#pb{bottom:5%;right:3%}
+.bar{height:9px;background:#444;border:2px solid #222;margin-top:3px}
+.bar u{display:block;height:100%;width:100%;background:#4ac84a;transition:width .6s,background .6s}
+#dmg span{position:absolute;font-size:24px;color:#fff;text-shadow:2px 2px #c00;animation:up .9s forwards;pointer-events:none}
+@keyframes up{to{transform:translateY(-34px);opacity:0}}
+#txt{min-height:66px;font-size:16px}
+#mv{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 4px}
+#mv button small{display:block;font-size:11px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:6px 4px}
+.grid .box{margin:0}.grid button{width:100%;padding:6px}
+.grid p{margin:4px 0;font-size:12px}
+.sil{filter:brightness(0) opacity(.5)}
+#plan ul{padding-left:18px;margin:.3em 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

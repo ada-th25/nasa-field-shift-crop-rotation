@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Harvest Heroes</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><b>HARVEST HEROES</b><span id="stat"></span>
+<button data-go="start">FARM</button><button data-go="map">MAP</button><button data-go="journal">JOURNAL</button></header>
+<main>
+<section id="start" class="box">
+<h2>Where will you farm?</h2>
+<form id="f" onsubmit="return false">
+<label>Country<input id="country" placeholder="e.g. Bangladesh" autocomplete="off"></label>
+<label>Region / city (optional)<input id="region" placeholder="e.g. Arizona"></label>
+<label>Biome<select id="biome"></select></label>
+<label>Crop<input id="crop" list="crops" placeholder="e.g. rice"></label>
+<datalist id="crops"><option>rice<option>wheat<option>dates<option>potatoes<option>cotton<option>corn<option>barley<option>tomatoes</datalist>
+<label>Soil<select id="soil"><option value="clay">Clay<option value="sandy">Sandy<option value="loam">Loam<option value="silt">Silt<option value="peat">Peat</select></label>
+<label>Season<select id="season"><option value="monsoon">Monsoon / wet<option value="summer">Summer<option value="winter">Winter<option value="spring">Spring<option value="autumn">Autumn</select></label>
+<label>Farm size<select id="size"><option value="small">Small plot<option value="medium">Medium farm<option value="large">Large farm</select></label>
+<label>Water<select id="water"><option value="limited">Limited water<option value="rainfed">Rain-fed only<option value="irrigated">Reliable irrigation<option value="waterlogged">Limited drainage</select></label>
+</form>
+<p id="hint"></p>
+<button id="go">START ADVENTURE</button>
+<p><small>Educational simulation, not a live forecast.</small></p>
+</section>
+<section id="map" hidden></section>
+<section id="battle" hidden>
+<div id="stage"><canvas id="cv" width="160" height="96"></canvas>
+<div class="hp" id="eb"><b id="en"></b> <small id="et"></small><div class="bar"><u id="eh"></u></div></div>
+<div class="hp" id="pb"><b>FARMER</b><div class="bar"><u id="ph"></u></div></div>
+<div id="dmg"></div></div>
+<div id="txt" class="box"></div><div id="mv"></div>
+</section>
+<section id="plan" hidden class="box"></section>
+<section id="journal" hidden></section>
+</main>
+<script src="script.js"></script>
+</body></html>
