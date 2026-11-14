@@ -325,6 +325,7 @@ def generate_risks_and_gaps(
     soil_is_estimated: bool,
     single_year_perennial_crops: list[str] | None = None,
     climate_mismatched_crops: list[dict] | None = None,
+    flood_irrigated_crops: list[str] | None = None,
 ) -> list[str]:
     """Per-rotation caveats surfaced directly in the API response, not just
     in docs -- what the brief calls 'information gaps' and 'risks that would
@@ -371,6 +372,13 @@ def generate_risks_and_gaps(
                 f"~{m['site_mean_temp_c']}C vs. a tolerance of [{lo}, {hi}]C) -- this score may not "
                 "reflect whether this crop can actually be grown here."
             )
+    if flood_irrigated_crops:
+        risks.append(
+            f"{', '.join(flood_irrigated_crops)}: water demand here is calculated as Kc x ET0, which "
+            "only covers crop transpiration -- it doesn't include the standing-water maintenance or "
+            "percolation losses of a flood-irrigated paddy system, so real water use for this crop is "
+            "likely well above what this rotation's water score and impact metrics report."
+        )
     return risks
 
 

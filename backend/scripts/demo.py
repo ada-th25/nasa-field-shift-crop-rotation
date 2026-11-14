@@ -83,8 +83,12 @@ def main():
             crop["_name"] for crop in sequence if frost_days_in_best_window(power_df, crop) > 0
         ))
         mismatched = climate_mismatched_crops(sequence, power_df) if is_current else []
+        flood_irrigated_crops = list(dict.fromkeys(
+            crop["_name"] for crop in sequence if crop.get("flood_irrigated")
+        ))
         result["risks_and_gaps"] = generate_risks_and_gaps(
-            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence), mismatched
+            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence), mismatched,
+            flood_irrigated_crops,
         )
         return result
 

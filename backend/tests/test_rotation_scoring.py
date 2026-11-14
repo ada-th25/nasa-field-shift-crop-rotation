@@ -49,6 +49,18 @@ CHICKPEA = {
     "root_depth_class": 3, "drought_tolerance": "high", "role": "cash_grain_legume",
     "has_market_revenue": True, "typical_yield_t_ha": 1.4, "_name": "chickpea",
 }
+RICE = {
+    "crop_family": "Poaceae", "flood_irrigated": True, "nitrogen_balance_kg_ha": -170,
+    "root_type": "fibrous_shallow", "root_depth_class": 1, "drought_tolerance": "low",
+    "role": "cash_grain", "has_market_revenue": True, "typical_yield_t_ha": 8.6,
+    "season_length_days": 150, "_name": "rice",
+}
+SORGHUM = {
+    "crop_family": "Poaceae", "nitrogen_balance_kg_ha": -50, "root_type": "fibrous_deep",
+    "root_depth_class": 3, "drought_tolerance": "high", "role": "cash_grain",
+    "has_market_revenue": True, "typical_yield_t_ha": 3.3, "season_length_days": 130,
+    "_name": "sorghum",
+}
 
 
 def baseline(**overrides):
@@ -209,6 +221,39 @@ class TestNewLegumes:
         # both are low-yield pulses relative to the existing row crops
         assert revenue_score(LENTIL) < revenue_score(SOYBEAN)
         assert revenue_score(CHICKPEA) < revenue_score(SOYBEAN)
+
+
+class TestRiceAndSorghum:
+    """Regression tests for rice/sorghum, added to demonstrate the dataset
+    can extend past the US-Midwest crop set (see docs/algorithm.md section
+    13/15 on the global-coverage gap)."""
+
+    def test_bounded_zero_to_one(self):
+        for crop in (RICE, SORGHUM):
+            assert 0.0 <= soil_score(crop, None, baseline()) <= 1.0
+            assert 0.0 <= revenue_score(crop) <= 1.0
+
+    def test_same_family_as_maize_triggers_gap_rule(self):
+        # rice and sorghum are Poaceae, same as maize/wheat/oats/rye.
+        assert not passes_agronomic_rules([RICE, MAIZE], min_family_gap_years=2)
+        assert not passes_agronomic_rules([SORGHUM, MAIZE], min_family_gap_years=2)
+
+    def test_sorghum_more_drought_resilient_than_rice(self):
+        # sorghum's whole agronomic point is drought tolerance; rice is
+        # flooded paddy and has essentially none.
+        assert resilience_score(SORGHUM) > resilience_score(RICE)
+
+    def test_rice_flags_flood_irrigation_water_accounting_gap(self):
+        risks = generate_risks_and_gaps(
+            frost_risk_crops=[], soil_is_estimated=False, flood_irrigated_crops=["rice"]
+        )
+        assert any("rice" in r and "percolation" in r for r in risks)
+
+    def test_sorghum_does_not_flag_flood_irrigation_gap(self):
+        risks = generate_risks_and_gaps(
+            frost_risk_crops=[], soil_is_estimated=False, flood_irrigated_crops=[]
+        )
+        assert not any("percolation" in r for r in risks)
 
 
 class TestRotationWeights:

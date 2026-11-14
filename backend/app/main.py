@@ -82,8 +82,12 @@ def rank_rotations(request: FarmRequest):
         # is always empty for them; current_rotation skips that filter on
         # purpose (it's what the farmer already does), so it needs its own check.
         mismatched = climate_mismatched_crops(sequence, power_df) if is_current else []
+        flood_irrigated_crops = list(dict.fromkeys(
+            crop["_name"] for crop in sequence if crop.get("flood_irrigated")
+        ))
         result["risks_and_gaps"] = generate_risks_and_gaps(
-            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence), mismatched
+            frost_risk_crops, soil_is_estimated, single_year_perennials(sequence), mismatched,
+            flood_irrigated_crops,
         )
         return result
 
