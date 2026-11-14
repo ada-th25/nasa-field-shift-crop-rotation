@@ -1,5 +1,14 @@
 # nasa-field-shift-crop-rotation
-
-# i am building the growth tracker
+Crop_Monitoring/
+│
+├── data/
+│   ├── crops.json
+│   └── growth_records.json
+│
+├── app.py
+│
+├── growth_tracker.py
+│
+└── requirements.txt
 
 
