@@ -1,0 +1,148 @@
+<title>Sprite Coordinate Picker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;600;700&display=swap">
+<style>
+/* layout: drop a spritesheet PNG, drag a selection box over one frame,
+   read off the sx/sy/sw/sh in real pixels -- paste those four numbers
+   straight into SPRITE_ASSETS in rotation-quest.html */
+:root{ --bg:#14171f; --panel:#1b2030; --ink:#eef1ff; --muted:#8e97b8; --accent:#ffd23f; --line:#343b55; color-scheme:dark; }
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){ --bg:#f3f4f8; --panel:#fff; --ink:#1b2030; --muted:#5b6380; --accent:#a86f00; --line:#d7dbec; color-scheme:light; } }
+:root[data-theme="light"]{ --bg:#f3f4f8; --panel:#fff; --ink:#1b2030; --muted:#5b6380; --accent:#a86f00; --line:#d7dbec; color-scheme:light; }
+*{box-sizing:border-box}
+body{ background:var(--bg); color:var(--ink); font-family:Manrope, system-ui, sans-serif; padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); }
+.wrap{ max-width:860px; margin:0 auto; padding-block:28px 60px; }
+h1{ font-size:22px; margin:0 0 6px; }
+p.sub{ color:var(--muted); font-size:13.5px; max-width:65ch; margin:0 0 20px; }
+.drop{ border:2px dashed var(--line); border-radius:14px; padding:28px; text-align:center; color:var(--muted); font-size:13px; cursor:pointer; }
+.drop.drag{ border-color:var(--accent); color:var(--accent); }
+.stage{ position:relative; margin-top:18px; border:1px solid var(--line); border-radius:10px; overflow:auto; background:repeating-conic-gradient(#20242f 0 25%,#1a1d26 0 50%) 0 0/16px 16px; max-height:70vh; display:none; }
+#sheet{ display:block; image-rendering:pixelated; cursor:crosshair; }
+#selbox{ position:absolute; border:2px solid var(--accent); background:rgba(255,210,63,.15); pointer-events:none; display:none; }
+.readout{ display:none; margin-top:14px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+.readout .row{ display:flex; gap:18px; flex-wrap:wrap; font-family:JetBrains Mono, monospace; font-size:13px; }
+.readout b{ color:var(--accent); }
+.readout .snippet{ margin-top:10px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-family:JetBrains Mono, monospace; font-size:12px; white-space:pre-wrap; word-break:break-all; }
+.copy-btn{ margin-top:8px; font-family:JetBrains Mono, monospace; font-size:11.5px; background:none; border:1px solid var(--line); color:var(--accent); border-radius:99px; padding:6px 12px; cursor:pointer; }
+.zoomrow{ display:flex; gap:10px; align-items:center; margin-top:10px; font-size:12.5px; color:var(--muted); }
+input[type=range]{ width:160px; }
+footer{ margin-top:30px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; line-height:1.6; }
+code{ font-family:JetBrains Mono, monospace; }
+</style>
+
+<div class="wrap">
+  <h1>Sprite Coordinate Picker</h1>
+  <p class="sub">Drop a spritesheet PNG below (from Kenney.nl or any CC0 pack you've downloaded), then drag a box around one frame. It reads off the exact pixel <code>sx, sy, sw, sh</code> to paste into <code>SPRITE_ASSETS</code> in <code>rotation-quest.html</code> &mdash; no image editor needed.</p>
+
+  <div class="drop" id="drop">Click to choose a PNG, or drag one here. Nothing uploads anywhere &mdash; it stays in this browser tab.</div>
+  <input type="file" id="file-input" accept="image/png,image/*" style="display:none">
+
+  <div class="zoomrow" id="zoomrow" style="display:none">
+    <span>Zoom</span><input type="range" id="zoom" min="1" max="8" value="2" step="1"><span id="zoom-label">2&times;</span>
+  </div>
+
+  <div class="stage" id="stage">
+    <img id="sheet" draggable="false">
+    <div id="selbox"></div>
+  </div>
+
+  <div class="readout" id="readout">
+    <div class="row">
+      <span>sx: <b id="r-sx">0</b></span>
+      <span>sy: <b id="r-sy">0</b></span>
+      <span>sw: <b id="r-sw">0</b></span>
+      <span>sh: <b id="r-sh">0</b></span>
+    </div>
+    <div class="snippet" id="snippet"></div>
+    <button class="copy-btn" id="copy-btn">Copy snippet</button>
+  </div>
+
+  <footer>
+    This runs entirely client-side &mdash; the image file never leaves your browser. Once you have sx/sy/sw/sh for each frame you need (player, professor, the enemy, your rotation's crops), paste them into the matching entry of <code>SPRITE_ASSETS</code> near the top of the game's script, and set <code>src</code> to the image file's path (or a <code>data:</code> URL if you're keeping everything in one file).
+  </footer>
+</div>
+
+<script>
+(function(){
+  const dropEl = document.getElementById('drop');
+  const fileInput = document.getElementById('file-input');
+  const stage = document.getElementById('stage');
+  const img = document.getElementById('sheet');
+  const selbox = document.getElementById('selbox');
+  const readout = document.getElementById('readout');
+  const zoomrow = document.getElementById('zoomrow');
+  const zoom = document.getElementById('zoom');
+  const zoomLabel = document.getElementById('zoom-label');
+  let scale = 2;
+
+  function loadFile(file){
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      img.src = e.target.result;
+      img.onload = ()=>{
+        applyZoom();
+        stage.style.display = 'block';
+        zoomrow.style.display = 'flex';
+      };
+    };
+    reader.readAsDataURL(file);
+  }
+  function applyZoom(){
+    img.style.width = (img.naturalWidth*scale)+'px';
+    img.style.height = (img.naturalHeight*scale)+'px';
+  }
+
+  dropEl.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', ()=> loadFile(fileInput.files[0]));
+  ['dragover','dragenter'].forEach(ev=> dropEl.addEventListener(ev, (e)=>{ e.preventDefault(); dropEl.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev=> dropEl.addEventListener(ev, (e)=>{ e.preventDefault(); dropEl.classList.remove('drag'); }));
+  dropEl.addEventListener('drop', (e)=> loadFile(e.dataTransfer.files[0]));
+
+  zoom.addEventListener('input', ()=>{ scale = parseInt(zoom.value,10); zoomLabel.textContent = scale+'x'; applyZoom(); });
+
+  let dragStart = null;
+  function imgPoint(ev){
+    const rect = img.getBoundingClientRect();
+    const x = Math.round((ev.clientX-rect.left)/scale);
+    const y = Math.round((ev.clientY-rect.top)/scale);
+    return { x: Math.max(0,Math.min(img.naturalWidth,x)), y: Math.max(0,Math.min(img.naturalHeight,y)) };
+  }
+  img.addEventListener('mousedown', (ev)=>{
+    dragStart = imgPoint(ev);
+    selbox.style.display = 'block';
+    updateBox(dragStart, dragStart);
+  });
+  window.addEventListener('mousemove', (ev)=>{
+    if(!dragStart) return;
+    updateBox(dragStart, imgPoint(ev));
+  });
+  window.addEventListener('mouseup', ()=>{ dragStart = null; });
+
+  function updateBox(a, b){
+    const sx = Math.min(a.x,b.x), sy = Math.min(a.y,b.y);
+    const sw = Math.max(1, Math.abs(b.x-a.x)), sh = Math.max(1, Math.abs(b.y-a.y));
+    const rect = img.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    selbox.style.left = (rect.left - stageRect.left + stage.scrollLeft + sx*scale) + 'px';
+    selbox.style.top = (rect.top - stageRect.top + stage.scrollTop + sy*scale) + 'px';
+    selbox.style.width = (sw*scale) + 'px';
+    selbox.style.height = (sh*scale) + 'px';
+    document.getElementById('r-sx').textContent = sx;
+    document.getElementById('r-sy').textContent = sy;
+    document.getElementById('r-sw').textContent = sw;
+    document.getElementById('r-sh').textContent = sh;
+    document.getElementById('snippet').textContent =
+      `frame: { sx: ${sx}, sy: ${sy}, sw: ${sw}, sh: ${sh} }`;
+    readout.style.display = 'block';
+  }
+
+  document.getElementById('copy-btn').addEventListener('click', async ()=>{
+    const text = document.getElementById('snippet').textContent;
+    try { await navigator.clipboard.writeText(text); }
+    catch(e){
+      const r = document.createRange(); r.selectNode(document.getElementById('snippet'));
+      window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
+    }
+  });
+})();
+</script>

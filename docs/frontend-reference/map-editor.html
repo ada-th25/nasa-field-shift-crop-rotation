@@ -1,0 +1,281 @@
+<title>Rotation Quest Map Editor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;600;700&display=swap">
+<style>
+/* layout: a tile palette on the left (click to select, drop a PNG to add a
+   new custom tile), a click-to-paint grid in the middle sized to match the
+   game's real 20x12 map, and an export panel on the right that generates
+   the exact MAP array + marker coordinates to paste into rotation-quest.html */
+:root{ --bg:#14171f; --panel:#1b2030; --ink:#eef1ff; --muted:#8e97b8; --accent:#ffd23f; --line:#343b55; --good:#4fd675; color-scheme:dark; }
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){ --bg:#f3f4f8; --panel:#fff; --ink:#1b2030; --muted:#5b6380; --accent:#a86f00; --line:#d7dbec; --good:#2f9e52; color-scheme:light; } }
+:root[data-theme="light"]{ --bg:#f3f4f8; --panel:#fff; --ink:#1b2030; --muted:#5b6380; --accent:#a86f00; --line:#d7dbec; --good:#2f9e52; color-scheme:light; }
+*{box-sizing:border-box}
+body{ background:var(--bg); color:var(--ink); font-family:Manrope, system-ui, sans-serif; padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); }
+.wrap{ max-width:1180px; margin:0 auto; padding-block:24px 60px; }
+h1{ font-size:22px; margin:0 0 4px; }
+p.sub{ color:var(--muted); font-size:13.5px; max-width:75ch; margin:0 0 20px; }
+.layout{ display:grid; grid-template-columns:200px 1fr 300px; gap:16px; align-items:start; }
+@media (max-width:900px){ .layout{ grid-template-columns:1fr; } }
+
+.panel{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+.panel h2{ font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 10px; font-family:JetBrains Mono, monospace; font-weight:500; }
+
+.palette{ display:flex; flex-direction:column; gap:6px; }
+.tile-btn{ display:flex; align-items:center; gap:8px; background:var(--bg); border:2px solid var(--line); border-radius:8px; padding:6px 8px; cursor:pointer; font-size:12px; color:var(--ink); text-align:left; }
+.tile-btn canvas{ image-rendering:pixelated; border-radius:3px; flex:none; }
+.tile-btn.active{ border-color:var(--accent); background:rgba(255,210,63,.08); }
+.tile-btn b{ font-family:JetBrains Mono, monospace; font-size:10px; color:var(--muted); }
+
+.marker-row{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+.marker-btn{ font-family:JetBrains Mono, monospace; font-size:11px; background:var(--bg); border:2px solid var(--line); border-radius:8px; padding:8px; cursor:pointer; color:var(--ink); text-align:left; }
+.marker-btn.active{ border-color:var(--good); color:var(--good); }
+
+.drop{ margin-top:10px; border:2px dashed var(--line); border-radius:8px; padding:10px; text-align:center; font-size:11px; color:var(--muted); cursor:pointer; }
+.drop.drag{ border-color:var(--accent); color:var(--accent); }
+
+.grid-wrap{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; overflow:auto; }
+#grid{ image-rendering:pixelated; cursor:crosshair; display:block; }
+
+.toolbar{ display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.tbtn{ font-family:JetBrains Mono, monospace; font-size:11px; background:var(--bg); border:1px solid var(--line); border-radius:99px; padding:7px 12px; cursor:pointer; color:var(--ink); }
+.tbtn:hover{ border-color:var(--accent); }
+
+textarea{ width:100%; min-height:220px; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; font-family:JetBrains Mono, monospace; font-size:11px; padding:10px; resize:vertical; }
+.export-btn{ width:100%; margin-top:10px; font-family:JetBrains Mono, monospace; font-size:12px; background:var(--accent); color:#1a1200; border:none; border-radius:8px; padding:10px; cursor:pointer; font-weight:700; }
+.copy-btn{ margin-top:8px; font-family:JetBrains Mono, monospace; font-size:11px; background:none; border:1px solid var(--line); color:var(--accent); border-radius:99px; padding:6px 12px; cursor:pointer; }
+footer{ margin-top:30px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; line-height:1.7; }
+code{ font-family:JetBrains Mono, monospace; }
+</style>
+
+<div class="wrap">
+  <h1>Map Editor</h1>
+  <p class="sub">Click a tile in the palette, then click/drag across the grid to paint it &mdash; this is pre-loaded with the Rotation Quest map exactly as it is now. Drop in more PNGs from your asset pack to add new tile types. When you're happy, hit Export for the code to paste back into <code>rotation-quest.html</code>.</p>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>Tiles</h2>
+      <div class="palette" id="palette"></div>
+      <div class="drop" id="drop">+ Drop a PNG to add a custom tile</div>
+      <input type="file" id="file-input" accept="image/png,image/*" style="display:none">
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)">
+        <label><input type="checkbox" id="flag-blocking"> Blocks movement (like the fence/tree)</label>
+        <label><input type="checkbox" id="flag-trigger"> Triggers the farm-patch battle (like the bare soil)</label>
+      </div>
+
+      <h2 style="margin-top:16px">Markers</h2>
+      <div class="marker-row">
+        <button class="marker-btn" id="marker-player">🧑 Place player start</button>
+        <button class="marker-btn" id="marker-professor">👴 Place professor</button>
+      </div>
+    </div>
+
+    <div class="grid-wrap">
+      <div class="toolbar">
+        <button class="tbtn" id="btn-fill">Fill all with selected tile</button>
+        <button class="tbtn" id="btn-reset">Reset to current game map</button>
+      </div>
+      <canvas id="grid"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Export</h2>
+      <button class="export-btn" id="export-btn">Generate code to paste in</button>
+      <textarea id="output" readonly placeholder="Click Export to generate the MAP array and marker coordinates..."></textarea>
+      <button class="copy-btn" id="copy-btn">Copy all</button>
+    </div>
+  </div>
+
+  <footer>
+    Runs entirely in this browser tab &mdash; nothing uploads anywhere. The exported block includes the <code>MAP</code> array, updated <code>player</code>/<code>professor</code> starting coordinates, and (if you added any custom tiles) the new <code>TILE_SRCS</code> / <code>TILE_TEXTURE_DATA</code> entries they need. Paste each piece over its matching spot in <code>rotation-quest.html</code> -- the comments in the exported code say exactly where.
+  </footer>
+</div>
+
+<script type="application/json" id="seed">
+{"tiles": [{"digit": 0, "key": "ground_grass", "label": "Grass", "color": "#84c669", "isBlocking": false, "isTrigger": false}, {"digit": 1, "key": "ground_path", "label": "Path / floor", "color": "#8a7049", "isBlocking": false, "isTrigger": false}, {"digit": 2, "key": "ground_hazard", "label": "Farm patch (battle trigger)", "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAABGdBTUEAALGPC/xhBQAAAAlQTFRFz4JUhMZpuGVCzNaJkAAAADRJREFUCNdjCAUCBjRi1apVQGLBqqUMQLASiBdoAolFWiAugljFsEJr1UqQYjCxFEhkhQIAVr0W+5S+ABAAAAAASUVORK5CYII=", "isBlocking": false, "isTrigger": true}, {"digit": 3, "key": "ground_fence", "label": "Border (blocks movement)", "color": "#1a2a18", "isBlocking": true, "isTrigger": false}, {"digit": 4, "key": "ground_sign", "label": "Sign / NPC spot", "color": "#8a7049", "isBlocking": false, "isTrigger": false}, {"digit": 5, "key": "veg_tree", "label": "Tree (blocks movement)", "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAABGdBTUEAALGPC/xhBQAAAA9QTFRFAAAAxuWNTpdMhMZpPyYxHd2/1gAAAAF0Uk5TAEDm2GYAAAA8SURBVAjXY2AgDrA4oDNcXNAYLC4uEDkWZxMIw8XZBCLnYmzsAlFiaAxW5OJsbAyWA8pA5FxclJSAJgEAnhEKSlp9PFcAAAAASUVORK5CYII=", "isBlocking": true, "isTrigger": false}], "map": ["33333333333333333333", "30050000000000005003", "30011111111111100003", "30010000000000100003", "30010004000000100003", "30011111111111100003", "30000000000222200003", "30000000000222200003", "30000000000222200003", "30050000000000005003", "30050000000000005003", "33333333333333333333"], "player": {"x": 5, "y": 4}, "professor": {"x": 7, "y": 4}}
+</script>
+<script>
+(function(){
+  const SEED = JSON.parse(document.getElementById('seed').textContent);
+  const COLS = 20, ROWS = 12, CELL = 28; // CELL is just this editor's zoom, unrelated to the game's 16px tiles
+  const gridCanvas = document.getElementById('grid');
+  gridCanvas.width = COLS*CELL; gridCanvas.height = ROWS*CELL;
+  const gctx = gridCanvas.getContext('2d');
+  gctx.imageSmoothingEnabled = false;
+
+  // map digit -> { key, label, img|null, color|null, isNew, isBlocking, isTrigger }
+  const palette = {};
+  let nextCustomDigit = 6; // 0-5 are the built-ins already in rotation-quest.html
+
+  function addPaletteEntry(digit, opts){
+    const entry = { key:opts.key, label:opts.label, img:null, color:opts.color||null, src:opts.src||null,
+      isNew: !!opts.isNew, isBlocking: !!opts.isBlocking, isTrigger: !!opts.isTrigger };
+    if(opts.src){
+      const img = new Image();
+      img.onload = draw;
+      img.src = opts.src;
+      entry.img = img;
+    }
+    palette[digit] = entry;
+    renderPaletteList();
+  }
+
+  SEED.tiles.forEach(t=> addPaletteEntry(t.digit, t));
+
+  let selectedDigit = 0;
+  let placingMarker = null; // null | 'player' | 'professor'
+  let mapGrid = SEED.map.map(row=> row.split('').map(Number));
+  let markers = { player: SEED.player, professor: SEED.professor };
+
+  function roleTag(t){
+    if(t.isBlocking && t.isTrigger) return 'blocks + battle';
+    if(t.isBlocking) return 'blocks movement';
+    if(t.isTrigger) return 'battle trigger';
+    return 'walkable ground';
+  }
+
+  function renderPaletteList(){
+    const el = document.getElementById('palette');
+    el.innerHTML = '';
+    Object.keys(palette).map(Number).sort((a,b)=>a-b).forEach(digit=>{
+      const t = palette[digit];
+      const btn = document.createElement('button');
+      btn.className = 'tile-btn' + (digit===selectedDigit && !placingMarker ? ' active' : '');
+      btn.innerHTML = `<canvas width="20" height="20"></canvas><span>${t.label}<br><b>digit ${digit}${t.isNew?' &middot; new':''} &middot; ${roleTag(t)}</b></span>`;
+      const c = btn.querySelector('canvas');
+      const cx = c.getContext('2d'); cx.imageSmoothingEnabled=false;
+      if(t.img){
+        if(t.img.complete && t.img.naturalWidth) cx.drawImage(t.img,0,0,20,20);
+        else t.img.onload = ()=>{ cx.drawImage(t.img,0,0,20,20); };
+      } else {
+        cx.fillStyle = t.color || '#84c669'; cx.fillRect(0,0,20,20);
+      }
+      btn.addEventListener('click', ()=>{ selectedDigit = digit; placingMarker = null; renderPaletteList(); });
+      el.appendChild(btn);
+    });
+  }
+
+  function draw(){
+    gctx.clearRect(0,0,gridCanvas.width,gridCanvas.height);
+    for(let y=0;y<ROWS;y++){
+      for(let x=0;x<COLS;x++){
+        const d = mapGrid[y][x];
+        const t = palette[d];
+        if(t && t.img && t.img.complete && t.img.naturalWidth) gctx.drawImage(t.img, x*CELL, y*CELL, CELL, CELL);
+        else { gctx.fillStyle = (t && t.color) || '#84c669'; gctx.fillRect(x*CELL, y*CELL, CELL, CELL); }
+        gctx.strokeStyle = 'rgba(0,0,0,.15)'; gctx.strokeRect(x*CELL+.5, y*CELL+.5, CELL-1, CELL-1);
+      }
+    }
+    // markers
+    drawMarker(markers.player, '🧑');
+    drawMarker(markers.professor, '👴');
+  }
+  function drawMarker(pos, emoji){
+    if(!pos) return;
+    gctx.font = (CELL-6)+'px sans-serif';
+    gctx.textAlign = 'center'; gctx.textBaseline = 'middle';
+    gctx.fillText(emoji, pos.x*CELL+CELL/2, pos.y*CELL+CELL/2+1);
+  }
+
+  function paintAt(x,y){
+    if(x<0||y<0||x>=COLS||y>=ROWS) return;
+    if(placingMarker){ markers[placingMarker] = {x,y}; placingMarker=null; renderMarkerButtons(); draw(); return; }
+    mapGrid[y][x] = selectedDigit;
+    draw();
+  }
+
+  let painting = false;
+  gridCanvas.addEventListener('mousedown', (e)=>{ painting=true; paintFromEvent(e); });
+  window.addEventListener('mouseup', ()=> painting=false);
+  gridCanvas.addEventListener('mousemove', (e)=>{ if(painting && !placingMarker) paintFromEvent(e); });
+  gridCanvas.addEventListener('click', paintFromEvent);
+  function paintFromEvent(e){
+    const rect = gridCanvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX-rect.left)/rect.width*COLS);
+    const y = Math.floor((e.clientY-rect.top)/rect.height*ROWS);
+    paintAt(x,y);
+  }
+
+  function renderMarkerButtons(){
+    document.getElementById('marker-player').classList.toggle('active', placingMarker==='player');
+    document.getElementById('marker-professor').classList.toggle('active', placingMarker==='professor');
+  }
+  document.getElementById('marker-player').addEventListener('click', ()=>{ placingMarker = placingMarker==='player'?null:'player'; renderMarkerButtons(); renderPaletteList(); });
+  document.getElementById('marker-professor').addEventListener('click', ()=>{ placingMarker = placingMarker==='professor'?null:'professor'; renderMarkerButtons(); renderPaletteList(); });
+
+  document.getElementById('btn-fill').addEventListener('click', ()=>{
+    for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++) mapGrid[y][x] = selectedDigit;
+    draw();
+  });
+  document.getElementById('btn-reset').addEventListener('click', ()=>{
+    mapGrid = SEED.map.map(row=> row.split('').map(Number));
+    markers = { player: SEED.player, professor: SEED.professor };
+    draw();
+  });
+
+  // ---- add a custom tile from a dropped/chosen PNG ----
+  const dropEl = document.getElementById('drop');
+  const fileInput = document.getElementById('file-input');
+  dropEl.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', ()=> loadCustomTile(fileInput.files[0]));
+  ['dragover','dragenter'].forEach(ev=> dropEl.addEventListener(ev, (e)=>{ e.preventDefault(); dropEl.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev=> dropEl.addEventListener(ev, (e)=>{ e.preventDefault(); dropEl.classList.remove('drag'); }));
+  dropEl.addEventListener('drop', (e)=> loadCustomTile(e.dataTransfer.files[0]));
+  function loadCustomTile(file){
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const digit = nextCustomDigit++;
+      const label = file.name.replace(/\.[^.]+$/, '').slice(0,16);
+      const key = 'custom_' + label.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+      const isBlocking = document.getElementById('flag-blocking').checked;
+      const isTrigger = document.getElementById('flag-trigger').checked;
+      addPaletteEntry(digit, { key, label, src: e.target.result, isNew:true, isBlocking, isTrigger });
+      selectedDigit = digit;
+      document.getElementById('flag-blocking').checked = false;
+      document.getElementById('flag-trigger').checked = false;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ---- export ----
+  document.getElementById('export-btn').addEventListener('click', ()=>{
+    const allDigits = Object.keys(palette).map(Number).sort((a,b)=>a-b);
+    const blockingDigits = allDigits.filter(d=> palette[d].isBlocking);
+    const triggerDigits = allDigits.filter(d=> palette[d].isTrigger);
+    const newTiles = allDigits.filter(d=> palette[d].isNew);
+
+    const mapLines = mapGrid.map(row=> "    '"+row.join('')+"',").join('\n');
+    let out = `// ---- paste over the existing "const MAP = [...]" block ----\nconst MAP = [\n${mapLines}\n  ].map(row=>row.split('').map(Number));\n\n`;
+    out += `// ---- paste over the existing player start / professor lines ----\nlet player = { x:${markers.player.x}, y:${markers.player.y}, px:${markers.player.x}*TILE, py:${markers.player.y}*TILE, moving:false, dir:'down' };\nconst professor = { x:${markers.professor.x}, y:${markers.professor.y} };\n`;
+
+    out += `\n// ---- paste over the existing BLOCKING_TILES / BATTLE_TRIGGER_TILES lines ----\n`;
+    out += `const BLOCKING_TILES = [${blockingDigits.join(', ')}]; // ${blockingDigits.map(d=>palette[d].label).join(', ') || 'none'}\n`;
+    out += `const BATTLE_TRIGGER_TILES = [${triggerDigits.join(', ')}]; // ${triggerDigits.map(d=>palette[d].label).join(', ') || 'none'}\n`;
+
+    // Where the battle patch actually is right now, so you can confirm it
+    // without reading the MAP grid by eye.
+    const triggerCells = [];
+    for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++) if(triggerDigits.includes(mapGrid[y][x])) triggerCells.push(`(${x},${y})`);
+    out += `// Battle-trigger tiles currently placed at: ${triggerCells.length ? triggerCells.join(', ') : 'none -- the battle can never start!'}\n`;
+
+    if(newTiles.length){
+      out += `\n// ---- new tile types: add these entries to TILE_SRCS and TILE_TEXTURE_DATA ----\n`;
+      out += `// in TILE_SRCS, add:\n`;
+      newTiles.forEach(d=> out += `//   ${d}: '${palette[d].key}',\n`);
+      const imageTiles = newTiles.filter(d=> palette[d].src);
+      if(imageTiles.length){
+        out += `// in TILE_TEXTURE_DATA, add:\n`;
+        imageTiles.forEach(d=> out += `  ${palette[d].key}: "${palette[d].src}",\n`);
+      }
+    }
+    document.getElementById('output').value = out;
+  });
+  document.getElementById('copy-btn').addEventListener('click', async ()=>{
+    const text = document.getElementById('output').value;
+    try{ await navigator.clipboard.writeText(text); } catch(e){ document.getElementById('output').select(); }
+  });
+
+  renderPaletteList();
+  draw();
+})();
+</script>

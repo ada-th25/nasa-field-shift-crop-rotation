@@ -1,0 +1,577 @@
+<title>Rotation Deck</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Manrope:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* layout: a game-board page -- farm-setup controls (schematic map + priority
+   sliders + baseline toggle) feed a live recompute of RSI/impact numbers
+   using the engine's real formulas, then the same card-hand/scoreboard/
+   chart/risks sections from before react to it; one column on phone width */
+:root{
+  --bg:#12170f; --bg2:#192016; --surface:#1d2518; --card:#222b1c;
+  --fg:#eef3e6; --muted:#9fb08c; --line:#2e3826;
+  --accent:#ffbe3d; --grain:#e0a526; --legume:#5fb562; --cover:#45a0a3;
+  --water:#4f9fd6; --warn:#e2714a; --good:#6fc26a;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f6f4ec; --bg2:#eeebdf; --surface:#fffdf6; --card:#fffdf6;
+    --fg:#20261a; --muted:#5b6b4c; --line:#dcd6c0;
+    --accent:#b4780a; --grain:#a06a12; --legume:#2f7a3a; --cover:#1f7072;
+    --water:#1f6fa8; --warn:#b2461f; --good:#2e7d32;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f6f4ec; --bg2:#eeebdf; --surface:#fffdf6; --card:#fffdf6;
+  --fg:#20261a; --muted:#5b6b4c; --line:#dcd6c0;
+  --accent:#b4780a; --grain:#a06a12; --legume:#2f7a3a; --cover:#1f7072;
+  --water:#1f6fa8; --warn:#b2461f; --good:#2e7d32;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:Manrope, system-ui, sans-serif;
+  padding-left:max(16px, env(safe-area-inset-left,0px));
+  padding-right:max(16px, env(safe-area-inset-right,0px));
+}
+h1,h2,h3,.display{ font-family:Rajdhani, system-ui, sans-serif; font-weight:700; letter-spacing:.02em; text-wrap:balance; }
+.wrap{ max-width:1080px; margin:0 auto; padding-block:28px 60px; }
+
+.hdr{ display:flex; flex-wrap:wrap; gap:16px 28px; align-items:flex-end; justify-content:space-between; padding-bottom:18px; border-bottom:1px solid var(--line); }
+.hdr-title{ font-size:clamp(28px,5vw,40px); line-height:1.02; margin:0; }
+.hdr-sub{ color:var(--muted); font-size:14px; margin-top:4px; }
+.badge-row{ display:flex; gap:8px; flex-wrap:wrap; }
+.badge{ font-family:JetBrains Mono, monospace; font-size:11px; letter-spacing:.04em; padding:5px 10px; border-radius:99px; border:1px solid var(--line); color:var(--muted); background:var(--surface); white-space:nowrap; }
+
+.section{ margin-top:40px; }
+.section-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+.section-head h2{ font-size:20px; margin:0; }
+.section-head .eyebrow{ font-family:JetBrains Mono, monospace; font-size:11px; color:var(--accent); letter-spacing:.08em; }
+.section-note{ color:var(--muted); font-size:13px; max-width:68ch; margin:4px 0 16px; }
+
+/* farm setup: map + controls */
+.setup-grid{ display:grid; grid-template-columns:1.1fr 1fr; gap:18px; align-items:start; }
+@media (max-width:760px){ .setup-grid{ grid-template-columns:1fr; } }
+.map-wrap{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; position:relative; }
+.map-wrap svg{ width:100%; height:auto; display:block; cursor:crosshair; }
+.map-caption{ font-size:11px; color:var(--muted); margin-top:8px; }
+.map-tip{
+  position:absolute; background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:10px 12px; font-size:12px; max-width:230px; color:var(--muted); pointer-events:none;
+  box-shadow:0 8px 24px rgba(0,0,0,.35); display:none; line-height:1.4;
+}
+.map-tip strong{ color:var(--fg); display:block; margin-bottom:3px; font-family:JetBrains Mono, monospace; font-size:11px; }
+
+.controls{ display:flex; flex-direction:column; gap:16px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; }
+.ctrl-row{ display:flex; flex-direction:column; gap:6px; }
+.ctrl-label{ display:flex; justify-content:space-between; font-size:12.5px; }
+.ctrl-label b{ font-family:Rajdhani; font-weight:700; }
+.ctrl-label span{ font-family:JetBrains Mono, monospace; color:var(--accent); font-variant-numeric:tabular-nums; }
+input[type=range]{ -webkit-appearance:none; width:100%; height:6px; border-radius:99px; background:var(--bg2); outline:none; }
+input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid var(--bg); }
+input[type=range]::-moz-range-thumb{ width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid var(--bg); }
+select, .reset-btn{ font-family:Manrope; font-size:13px; background:var(--bg2); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 10px; }
+.reset-btn{ cursor:pointer; align-self:flex-start; font-family:JetBrains Mono, monospace; font-size:11.5px; color:var(--accent); background:none; border:1px solid var(--line); border-radius:99px; padding:7px 14px; }
+.ctrl-divider{ border-top:1px solid var(--line); margin:2px 0; }
+.ctrl-foot{ font-size:11px; color:var(--muted); line-height:1.5; }
+
+/* rotation select rail */
+.rail{ display:flex; gap:10px; flex-wrap:wrap; }
+.rail button{
+  font-family:JetBrains Mono, monospace; font-size:12.5px; cursor:pointer;
+  background:var(--surface); color:var(--fg); border:1px solid var(--line);
+  border-radius:10px; padding:9px 12px; text-align:left; min-width:0;
+}
+.rail button strong{ display:block; font-size:14px; margin-bottom:2px; }
+.rail button[aria-pressed="true"]{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; color:var(--accent); }
+.rail button .rsi{ color:var(--muted); font-size:11px; }
+.rail button .rank-shift{ font-size:10px; color:var(--good); margin-left:4px; }
+
+/* evolution chain hero */
+.chain{ display:flex; align-items:stretch; gap:0; overflow-x:auto; padding:4px 2px 10px; }
+.chain-arrow{ display:flex; align-items:center; justify-content:center; min-width:34px; color:var(--muted); font-size:20px; }
+.card{
+  flex:1 1 220px; min-width:200px; background:var(--card); border:1px solid var(--line);
+  border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;
+  position:relative; overflow:hidden;
+}
+.card::before{ content:""; position:absolute; inset:0 0 auto 0; height:4px; background:var(--type-color,var(--accent)); }
+.card-top{ display:flex; align-items:center; gap:10px; }
+.card-icon{ font-size:30px; line-height:1; filter:drop-shadow(0 1px 0 rgba(0,0,0,.2)); }
+.card-name{ font-family:Rajdhani; font-weight:700; font-size:19px; text-transform:capitalize; }
+.card-type{ font-family:JetBrains Mono, monospace; font-size:10.5px; letter-spacing:.06em; color:var(--type-color,var(--accent)); text-transform:uppercase; }
+.year-tag{ font-family:JetBrains Mono, monospace; font-size:10.5px; color:var(--muted); margin-left:auto; }
+
+.stat-row{ display:grid; grid-template-columns:52px 1fr 34px; gap:8px; align-items:center; font-size:11.5px; }
+.stat-row span:first-child{ color:var(--muted); font-family:JetBrains Mono, monospace; }
+.stat-row span:last-child{ font-family:JetBrains Mono, monospace; font-variant-numeric:tabular-nums; text-align:right; }
+.meter{ height:7px; border-radius:99px; background:var(--bg2); overflow:hidden; }
+.meter > i{ display:block; height:100%; border-radius:99px; background:var(--accent); }
+.meter.soil>i{ background:#8a5a2b; } .meter.water>i{ background:var(--water); }
+.meter.resilience>i{ background:var(--legume); } .meter.revenue>i{ background:var(--grain); }
+
+.bareline{ margin-top:2px; }
+.bareline-label{ display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted); font-family:JetBrains Mono, monospace; margin-bottom:4px; }
+.bareline-bar{ display:flex; height:9px; border-radius:5px; overflow:hidden; border:1px solid var(--line); }
+.bareline-bar .covered{ background:var(--good); } .bareline-bar .bare{ background:var(--bg2); }
+
+.card-summary{ font-size:12.5px; line-height:1.45; color:var(--muted); max-height:5.8em; overflow:hidden; }
+.card.expanded .card-summary{ max-height:none; }
+.card-more{ font-family:JetBrains Mono, monospace; font-size:10.5px; color:var(--accent); background:none; border:none; cursor:pointer; padding:0; text-align:left; }
+
+/* scoreboard */
+.scoreboard{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.tile{ background:var(--surface); padding:16px; min-width:0; }
+.tile .label{ font-family:JetBrains Mono, monospace; font-size:10.5px; color:var(--muted); letter-spacing:.04em; }
+.tile .value{ font-family:Rajdhani; font-weight:700; font-size:28px; margin-top:4px; transition:color .15s; }
+.tile .value small{ font-size:14px; color:var(--muted); font-weight:600; }
+.tile.good .value{ color:var(--good); } .tile.warn .value{ color:var(--warn); }
+
+.sdg-badges{ display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.sdg-badge{ display:flex; gap:8px; align-items:center; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:8px 12px; max-width:320px; }
+.sdg-badge .icon{ font-size:18px; }
+.sdg-badge .t{ font-family:Rajdhani; font-weight:700; font-size:13px; }
+.sdg-badge .r{ font-size:11px; color:var(--muted); line-height:1.3; }
+
+.chart-wrap{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; overflow-x:auto; }
+svg text{ fill:var(--muted); font-family:JetBrains Mono, monospace; font-size:9.5px; }
+.legend{ display:flex; gap:16px; font-size:11px; color:var(--muted); margin-top:8px; flex-wrap:wrap; }
+.legend span{ display:inline-flex; align-items:center; gap:6px; }
+.legend i{ width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+.risks{ display:flex; flex-direction:column; gap:8px; }
+.risk{ display:flex; gap:10px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12.5px; color:var(--muted); line-height:1.4; }
+.risk .mark{ color:var(--warn); flex:none; }
+
+.unused-strip{ display:flex; gap:10px; flex-wrap:wrap; }
+.unused-chip{ display:flex; align-items:center; gap:7px; background:var(--surface); border:1px dashed var(--line); border-radius:99px; padding:7px 12px; font-size:12px; color:var(--muted); }
+.unused-chip .icon{ font-size:16px; filter:grayscale(1); opacity:.7; }
+
+.legend-box{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-top:24px; }
+.legend-box h3{ font-size:13px; margin:0 0 10px; color:var(--muted); font-family:JetBrains Mono, monospace; letter-spacing:.05em; font-weight:500; text-transform:uppercase; }
+.legend-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px 18px; }
+.legend-item{ display:flex; gap:10px; align-items:flex-start; font-size:12.5px; line-height:1.4; }
+.legend-item a{ color:inherit; text-decoration:none; display:contents; }
+.legend-item .gi{ font-size:16px; flex:none; }
+.legend-item b{ font-family:Rajdhani; font-weight:700; display:block; font-size:13.5px; }
+.legend-item span{ color:var(--muted); }
+.game-tag{ font-family:JetBrains Mono, monospace; font-size:10px; letter-spacing:.04em; color:var(--accent); border:1px solid var(--line); border-radius:99px; padding:2px 9px; white-space:nowrap; }
+
+footer{ margin-top:50px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; line-height:1.6; }
+code{ font-family:JetBrains Mono, monospace; font-size:.95em; }
+</style>
+
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <h1 class="hdr-title">Rotation Deck</h1>
+      <div class="hdr-sub">Interactive walk-through of the real scoring engine, dealt out as a crop-rotation TCG</div>
+    </div>
+    <div class="badge-row">
+      <span class="badge" id="farm-badge">&mdash;</span>
+      <span class="badge">NASA POWER + SoilGrids, 2023</span>
+    </div>
+  </div>
+
+  <div class="legend-box">
+    <h3>Where the Pok&eacute;mon-TCG ideas land in this build</h3>
+    <div class="legend-grid">
+      <div class="legend-item"><a href="#setup"><span class="gi">🎚️</span><div><b>Stat allocation screen</b><span>Priority sliders below, in &sect;01</span></div></a></div>
+      <div class="legend-item"><a href="#rail"><span class="gi">🗂️</span><div><b>Deck / hand selection</b><span>Rotation rail, in &sect;02</span></div></a></div>
+      <div class="legend-item"><a href="#chain"><span class="gi">⛓️</span><div><b>Evolution chain</b><span>3-card sequence with arrows, in &sect;03</span></div></a></div>
+      <div class="legend-item"><a href="#chain"><span class="gi">📊</span><div><b>Stat bars (radar alternative)</b><span>Soil/water/resilience/revenue per card, in &sect;03</span></div></a></div>
+      <div class="legend-item"><a href="#chain"><span class="gi">🛡️</span><div><b>Weakness indicator</b><span>Bare-field cover strip per card, in &sect;03</span></div></a></div>
+      <div class="legend-item"><a href="#impact"><span class="gi">🏅</span><div><b>Achievement badges</b><span>SDG tags, in &sect;04</span></div></a></div>
+    </div>
+  </div>
+
+  <div class="section" id="setup">
+    <div class="section-head"><span class="eyebrow">01</span><h2>Farm setup</h2></div>
+    <p class="section-note">This is the input a farmer would give the real tool: drop a pin, set what matters most to them, say what they grow today. Every number downstream reacts to this live.</p>
+    <div class="setup-grid">
+      <div class="map-wrap">
+        <svg id="map" viewBox="0 0 600 320" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="map-tip" id="map-tip"></div>
+        <div class="map-caption">Schematic CONUS grid, not to scale &mdash; click anywhere to see how pin-drop works. Only the Ames, IA pin has live NASA data behind it in this demo.</div>
+      </div>
+      <div class="controls">
+        <div class="ctrl-row"><div class="ctrl-label"><b>Soil health</b><span id="w-soil-pct">30%</span></div><input type="range" id="w-soil" min="0" max="100" value="30"></div>
+        <div class="ctrl-row"><div class="ctrl-label"><b>Water sustainability</b><span id="w-water-pct">30%</span></div><input type="range" id="w-water" min="0" max="100" value="30"></div>
+        <div class="ctrl-row"><div class="ctrl-label"><b>Drought resilience</b><span id="w-resilience-pct">15%</span></div><input type="range" id="w-resilience" min="0" max="100" value="15"></div>
+        <div class="ctrl-row"><div class="ctrl-label"><b>Revenue</b><span id="w-revenue-pct">25%</span></div><input type="range" id="w-revenue" min="0" max="100" value="25"></div>
+        <div class="ctrl-divider"></div>
+        <div class="ctrl-row">
+          <div class="ctrl-label"><b>Compare against</b></div>
+          <select id="baseline-select"></select>
+        </div>
+        <button class="reset-btn" id="reset-btn">Reset to defaults</button>
+        <div class="ctrl-divider"></div>
+        <div class="ctrl-foot">Sliders re-run the engine's real weighted-sum formula (normalized weights &times; each rotation's actual soil/water/resilience/revenue scores, 0.9 per-year discount) &mdash; this is the same math as the API, not a mock. The baseline selector is a demo-only extension: the live API always compares to continuous maize.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="rail">
+    <div class="section-head"><span class="eyebrow">02</span><h2>Ranked rotations</h2><span class="game-tag">🗂️ deck select</span></div>
+    <p class="section-note">Re-ranks live as you move the sliders above. Each option is a real candidate the engine generated and scored for this farm.</p>
+    <div class="rail" id="rail-list"></div>
+  </div>
+
+  <div class="section" id="chain">
+    <div class="section-head"><span class="eyebrow">03</span><h2>The hand</h2><span class="game-tag">⛓️ evolution chain</span><span class="game-tag">📊 stat bars</span><span class="game-tag">🛡️ weakness</span></div>
+    <p class="section-note">Three years, three cards. Stats are the engine's own 0&ndash;1 scores; the green/grey strip is the bare-field-days feature &mdash; how long that crop leaves soil without living cover each year.</p>
+    <div class="chain" id="chain-cards"></div>
+  </div>
+
+  <div class="section" id="impact">
+    <div class="section-head"><span class="eyebrow">04</span><h2>Impact vs. baseline</h2><span class="game-tag">🏅 badges</span></div>
+    <p class="section-note">What this rotation changes relative to the comparison baseline you picked above &mdash; including trade-offs it doesn't hide.</p>
+    <div class="scoreboard" id="scoreboard"></div>
+    <div class="sdg-badges" id="sdg-badges"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><span class="eyebrow">05</span><h2>Site conditions, 2023</h2></div>
+    <p class="section-note">Monthly rainfall vs. reference crop water demand (ET&#8320;) from the NASA POWER feed that drives every score above.</p>
+    <div class="chart-wrap"><svg id="chart" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto"></svg>
+      <div class="legend">
+        <span><i style="background:var(--water)"></i>Rainfall (mm/mo)</span>
+        <span><i style="background:var(--warn)"></i>ET&#8320; crop water demand (mm/mo)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><span class="eyebrow">06</span><h2>Risks &amp; gaps</h2></div>
+    <p class="section-note">The same caveats the API returns with every rotation &mdash; nothing here overclaims precision the data doesn't have.</p>
+    <div class="risks" id="risks"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><span class="eyebrow">07</span><h2>Drawn but not wired up</h2></div>
+    <p class="section-note">These cards exist as art but have no matching entry in <code>crops.json</code> yet, so the engine can never deal them.</p>
+    <div class="unused-strip" id="unused"></div>
+  </div>
+
+  <footer>
+    Data: NASA POWER (weather, root-zone soil wetness) and ISRIC SoilGrids v2.0 (topsoil properties), fetched live for Ames, IA.
+    Scores and recompute logic mirror <code>rotation_scoring.py</code> exactly &mdash; nothing in this page is hand-tuned to look good.
+  </footer>
+</div>
+
+<script type="application/json" id="data">
+{"farm": {"lat": 42.0308, "lon": -93.6319, "label": "Central Iowa (Ames)"}, "baseline_crop": "maize", "current_rotation": {"sequence": ["maize", "maize", "maize"], "rsi": 1.612, "year_breakdown": [{"crop": "maize", "soil_score": 0.15, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.595, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": false, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "maize", "soil_score": 0.15, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.595, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": false, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "maize", "soil_score": 0.15, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.595, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": false, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}], "impact_metrics": {"baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 0, "water_saved_mm": 0.0, "water_saved_pct": 0.0, "bare_field_days_avoided": 0, "sdg_tags": []}, "risks_and_gaps": ["Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.", "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.", "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.", "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested)."]}, "top_rotations": [{"sequence": ["alfalfa", "maize", "alfalfa"], "rsi": 1.809, "year_breakdown": [{"crop": "alfalfa", "soil_score": 0.567, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.661, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": false, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}, {"crop": "maize", "soil_score": 0.3, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.64, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": true, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "alfalfa", "soil_score": 0.717, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.706, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": true, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}], "impact_metrics": {"baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 600, "water_saved_mm": -1164.5, "water_saved_pct": -136.0, "bare_field_days_avoided": 430, "sdg_tags": [{"sdg": "SDG 13", "label": "Climate Action", "rationale": "Avoids ~600 kg/ha of synthetic nitrogen vs. continuous maize, reducing fertilizer-linked emissions."}, {"sdg": "SDG 15", "label": "Life on Land", "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture."}]}, "risks_and_gaps": ["Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.", "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.", "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.", "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested).", "alfalfa: the best available growing window in the fetched weather data still included sub-zero days. Check local frost dates before planting.", "alfalfa is shown here for a single year, but in practice a perennial forage crop like this is established once and kept in the ground for several years, not replanted annually -- this rotation doesn't model establishment cost or yield drag from doing that."]}, {"sequence": ["alfalfa", "cereal_rye_cover", "alfalfa"], "rsi": 1.755, "year_breakdown": [{"crop": "alfalfa", "soil_score": 0.567, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.661, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": false, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}, {"crop": "cereal_rye_cover", "soil_score": 0.435, "water_score": 1.0, "resilience_score": 1.0, "revenue_score": 0.0, "year_score": 0.58, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": 10, "water_demand_mm": 253.4, "water_deficit_mm": 0, "root_diversified_from_previous": true, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "none", "summary": "Adds an estimated 10 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~253 mm) is comfortably covered by expected rainfall and stored soil moisture. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. High drought tolerance. High erosion protection from ground cover and residue. Grown for soil benefit, not sold into a market -- no direct harvest revenue. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "alfalfa", "soil_score": 0.717, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.706, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": true, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}], "impact_metrics": {"baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 760, "water_saved_mm": -1132.4, "water_saved_pct": -132.2, "bare_field_days_avoided": 430, "sdg_tags": [{"sdg": "SDG 13", "label": "Climate Action", "rationale": "Avoids ~760 kg/ha of synthetic nitrogen vs. continuous maize, reducing fertilizer-linked emissions."}, {"sdg": "SDG 15", "label": "Life on Land", "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture."}]}, "risks_and_gaps": ["Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.", "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.", "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.", "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested).", "alfalfa, cereal_rye_cover: the best available growing window in the fetched weather data still included sub-zero days. Check local frost dates before planting.", "alfalfa is shown here for a single year, but in practice a perennial forage crop like this is established once and kept in the ground for several years, not replanted annually -- this rotation doesn't model establishment cost or yield drag from doing that."]}, {"sequence": ["maize", "alfalfa", "maize"], "rsi": 1.749, "year_breakdown": [{"crop": "maize", "soil_score": 0.15, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.595, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": false, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "alfalfa", "soil_score": 0.717, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.706, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": true, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}, {"crop": "maize", "soil_score": 0.3, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.64, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": true, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}], "impact_metrics": {"baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 300, "water_saved_mm": -582.2, "water_saved_pct": -68.0, "bare_field_days_avoided": 215, "sdg_tags": [{"sdg": "SDG 13", "label": "Climate Action", "rationale": "Avoids ~300 kg/ha of synthetic nitrogen vs. continuous maize, reducing fertilizer-linked emissions."}, {"sdg": "SDG 15", "label": "Life on Land", "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture."}]}, "risks_and_gaps": ["Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.", "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.", "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.", "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested).", "alfalfa: the best available growing window in the fetched weather data still included sub-zero days. Check local frost dates before planting.", "alfalfa is shown here for a single year, but in practice a perennial forage crop like this is established once and kept in the ground for several years, not replanted annually -- this rotation doesn't model establishment cost or yield drag from doing that."]}, {"sequence": ["alfalfa", "oats", "alfalfa"], "rsi": 1.731, "year_breakdown": [{"crop": "alfalfa", "soil_score": 0.567, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.661, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": false, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}, {"crop": "oats", "soil_score": 0.3, "water_score": 1.0, "resilience_score": 0.6, "revenue_score": 0.291, "year_score": 0.553, "bare_field_days": 245, "explanation": {"nitrogen_balance_kg_ha": -90, "water_demand_mm": 134.2, "water_deficit_mm": 0, "root_diversified_from_previous": true, "drought_tolerance": "medium", "erosion_protection": "medium", "revenue_potential": "low", "summary": "Draws down an estimated 90 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~134 mm) is comfortably covered by expected rainfall and stored soil moisture. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. Medium drought tolerance. Medium erosion protection from ground cover and residue. Low relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~245 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "alfalfa", "soil_score": 0.717, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.706, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": true, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}], "impact_metrics": {"baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 660, "water_saved_mm": -1013.1, "water_saved_pct": -118.3, "bare_field_days_avoided": 400, "sdg_tags": [{"sdg": "SDG 13", "label": "Climate Action", "rationale": "Avoids ~660 kg/ha of synthetic nitrogen vs. continuous maize, reducing fertilizer-linked emissions."}, {"sdg": "SDG 15", "label": "Life on Land", "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture."}]}, "risks_and_gaps": ["Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.", "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.", "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.", "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested).", "alfalfa, oats: the best available growing window in the fetched weather data still included sub-zero days. Check local frost dates before planting.", "alfalfa is shown here for a single year, but in practice a perennial forage crop like this is established once and kept in the ground for several years, not replanted annually -- this rotation doesn't model establishment cost or yield drag from doing that."]}, {"sequence": ["alfalfa", "maize", "soybean"], "rsi": 1.721, "year_breakdown": [{"crop": "alfalfa", "soil_score": 0.567, "water_score": 0.521, "resilience_score": 1.0, "revenue_score": 0.74, "year_score": 0.661, "bare_field_days": 0, "explanation": {"nitrogen_balance_kg_ha": 150, "water_demand_mm": 867.7, "water_deficit_mm": 415.3, "root_diversified_from_previous": false, "drought_tolerance": "high", "erosion_protection": "high", "revenue_potential": "medium", "summary": "Adds an estimated 150 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~868 mm) exceeds expected rainfall and stored soil moisture by ~415 mm; irrigation may be needed. High drought tolerance. High erosion protection from ground cover and residue. Medium relative revenue potential based on typical yield. Holds the field year-round, leaving no bare-soil window."}}, {"crop": "maize", "soil_score": 0.3, "water_score": 1.0, "resilience_score": 0.2, "revenue_score": 0.88, "year_score": 0.64, "bare_field_days": 215, "explanation": {"nitrogen_balance_kg_ha": -150, "water_demand_mm": 285.5, "water_deficit_mm": 0, "root_diversified_from_previous": true, "drought_tolerance": "low", "erosion_protection": "medium", "revenue_potential": "high", "summary": "Draws down an estimated 150 kg N/ha of soil nitrogen; will need fertilizer input. Water demand (~286 mm) is comfortably covered by expected rainfall and stored soil moisture. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. Low drought tolerance. Medium erosion protection from ground cover and residue. High relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~215 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}, {"crop": "soybean", "soil_score": 0.358, "water_score": 1.0, "resilience_score": 0.6, "revenue_score": 0.401, "year_score": 0.598, "bare_field_days": 245, "explanation": {"nitrogen_balance_kg_ha": 40, "water_demand_mm": 157.3, "water_deficit_mm": 0, "root_diversified_from_previous": true, "drought_tolerance": "medium", "erosion_protection": "low", "revenue_potential": "low", "summary": "Adds an estimated 40 kg N/ha to the soil, reducing fertilizer need for the next crop. Water demand (~157 mm) is comfortably covered by expected rainfall and stored soil moisture. Different rooting depth than the previous crop, helping break up compaction and access a different soil moisture layer. Medium drought tolerance. Low erosion protection from ground cover and residue. Low relative revenue potential based on typical yield. Leaves the field without living cover for an estimated ~245 days/year outside its growing season -- a bare-soil window more exposed to erosion and nutrient leaching."}}], "impact_metrics": {"baseline": "continuous maize", "nitrogen_fertilizer_avoided_kg_ha": 490, "water_saved_mm": -454.0, "water_saved_pct": -53.0, "bare_field_days_avoided": 185, "sdg_tags": [{"sdg": "SDG 13", "label": "Climate Action", "rationale": "Avoids ~490 kg/ha of synthetic nitrogen vs. continuous maize, reducing fertilizer-linked emissions."}, {"sdg": "SDG 15", "label": "Life on Land", "rationale": "Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture."}]}, "risks_and_gaps": ["Climate suitability is checked on temperature only -- day length, frost timing, rainfall seasonality, and local pest or disease pressure aren't modelled. Have an agronomist confirm this rotation suits local conditions before adopting it.", "Revenue potential is a relative, yield-based proxy, not a real profit calculation -- it excludes commodity price, input costs, and labour, all of which vary too much by region and season to responsibly estimate here.", "Erosion protection is a qualitative indicator based on crop role and root habit, not a site-specific soil-loss model (e.g. RUSLE2) -- slope, tillage practice, and residue management all affect real erosion risk and aren't accounted for here.", "Bare-field days (days/year without living cover) are estimated from each crop's typical season length, not an actual planting calendar -- they don't account for post-harvest residue (which still offers some protection), or for a different crop filling that gap in practice (e.g. a cover crop planted after a cash grain is harvested).", "alfalfa: the best available growing window in the fetched weather data still included sub-zero days. Check local frost dates before planting.", "alfalfa is shown here for a single year, but in practice a perennial forage crop like this is established once and kept in the ground for several years, not replanted annually -- this rotation doesn't model establishment cost or yield drag from doing that."]}], "crops_meta": {"maize": {"crop_family": "Poaceae", "nitrogen_balance_kg_ha": -150, "seasonal_water_requirement_mm": 650, "kc_ini": 0.3, "kc_mid": 1.2, "kc_end": 0.6, "season_length_days": 150, "min_temp_c": 10, "max_temp_c": 35, "root_type": "fibrous_shallow", "root_depth_class": 1, "drought_tolerance": "low", "role": "cash_grain", "has_market_revenue": true, "typical_yield_t_ha": 11.0, "source": "FAO-56 Table 12; Iowa State Extension; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"}, "soybean": {"crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 40, "seasonal_water_requirement_mm": 500, "kc_ini": 0.4, "kc_mid": 1.15, "kc_end": 0.5, "season_length_days": 120, "min_temp_c": 10, "max_temp_c": 35, "root_type": "taproot_medium", "root_depth_class": 2, "drought_tolerance": "medium", "role": "cash_grain_legume", "has_market_revenue": true, "typical_yield_t_ha": 3.4, "source": "FAO-56 Table 12; USDA NRCS; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"}, "oats": {"crop_family": "Poaceae", "nitrogen_balance_kg_ha": -90, "seasonal_water_requirement_mm": 400, "kc_ini": 0.3, "kc_mid": 1.15, "kc_end": 0.25, "season_length_days": 120, "min_temp_c": 5, "max_temp_c": 28, "root_type": "fibrous_shallow", "root_depth_class": 2, "drought_tolerance": "medium", "role": "cash_grain", "has_market_revenue": true, "typical_yield_t_ha": 2.4, "source": "FAO-56 Table 12; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS), not a specific year's figure"}, "cereal_rye_cover": {"crop_family": "Poaceae", "nitrogen_balance_kg_ha": 10, "seasonal_water_requirement_mm": 250, "kc_ini": 0.3, "kc_mid": 1.0, "kc_end": 0.6, "season_length_days": 150, "min_temp_c": 1, "max_temp_c": 30, "root_type": "fibrous_deep", "root_depth_class": 3, "drought_tolerance": "high", "role": "cover_crop", "has_market_revenue": false, "typical_yield_t_ha": null, "source": "USDA NRCS cover crop guide; FAO-56 small grains analog. Terminated as a cover before grain harvest, so it isn't sold into a grain market -- has_market_revenue is false, not a missing data point."}, "alfalfa": {"crop_family": "Fabaceae", "nitrogen_balance_kg_ha": 150, "seasonal_water_requirement_mm": 900, "kc_ini": 0.4, "kc_mid": 0.95, "kc_end": 0.9, "season_length_days": 365, "min_temp_c": 5, "max_temp_c": 30, "root_type": "taproot_deep", "root_depth_class": 4, "drought_tolerance": "high", "role": "perennial_forage_legume", "has_market_revenue": true, "typical_yield_t_ha": 7.6, "source": "FAO-56 Table 12; Iowa State Extension; yield is an approximate multi-year U.S. average order of magnitude (USDA NASS hay yield), not a specific year's figure"}}, "monthly": [{"month": "2023-01", "precip_mm": 50.7, "gwetroot": 0.471, "et0_mm": 13.5}, {"month": "2023-02", "precip_mm": 54.7, "gwetroot": 0.499, "et0_mm": 30.3}, {"month": "2023-03", "precip_mm": 36.6, "gwetroot": 0.532, "et0_mm": 53.2}, {"month": "2023-04", "precip_mm": 52.5, "gwetroot": 0.508, "et0_mm": 105.9}, {"month": "2023-05", "precip_mm": 71.9, "gwetroot": 0.482, "et0_mm": 141.3}, {"month": "2023-06", "precip_mm": 84.0, "gwetroot": 0.431, "et0_mm": 156.7}, {"month": "2023-07", "precip_mm": 62.3, "gwetroot": 0.406, "et0_mm": 166.2}, {"month": "2023-08", "precip_mm": 75.0, "gwetroot": 0.394, "et0_mm": 159.8}, {"month": "2023-09", "precip_mm": 40.0, "gwetroot": 0.372, "et0_mm": 128.8}, {"month": "2023-10", "precip_mm": 59.8, "gwetroot": 0.395, "et0_mm": 83.9}, {"month": "2023-11", "precip_mm": 5.0, "gwetroot": 0.404, "et0_mm": 51.1}, {"month": "2023-12", "precip_mm": 35.1, "gwetroot": 0.413, "et0_mm": 26.5}], "resolution_km": 55, "water_demand_lookup": {"maize": 285.5, "alfalfa": 867.7, "cereal_rye_cover": 253.4, "oats": 134.2, "soybean": 157.3}}
+</script>
+<script>
+(function(){
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const ICONS = { maize:'🌽', cereal_rye_cover:'🌾', alfalfa:'🍀', soybean:'🫘', oats:'🌾🌱' };
+  const TYPE_COLOR = { 'Poaceae':'var(--grain)', 'Fabaceae':'var(--legume)' };
+  const UNUSED_CARDS = [
+    ['rice','🍚'],['sunflower','🌻'],['cotton','🌱'],['rapeseed','🌼'],
+    ['beetroot','🟣'],['carrots','🥕'],['potatoes','🥔'],['coffee','☕'],['tea','🍵']
+  ];
+  const DISCOUNT = 0.9;
+
+  document.getElementById('farm-badge').textContent = DATA.farm.label + ` (${DATA.farm.lat}, ${DATA.farm.lon})`;
+
+  function fmt(n, digits){ return (n===null||n===undefined) ? '—' : Number(n).toFixed(digits==null?0:digits); }
+  function typeColor(fam){ return TYPE_COLOR[fam] || 'var(--cover)'; }
+  function roleLabel(role){
+    if(role==='cash_grain') return 'Grain type';
+    if(role && role.indexOf('legume')>-1) return 'Legume type';
+    if(role==='cover_crop') return 'Cover type';
+    return 'Crop';
+  }
+  function rotationKey(r){ return r.sequence.join('>') + (r===DATA.current_rotation?'::current':''); }
+
+  // ---- weights (mirrors RotationWeights.normalized()) ----
+  const rawWeights = { soil:30, water:30, resilience:15, revenue:25 };
+  function normalizedWeights(){
+    const total = rawWeights.soil + rawWeights.water + rawWeights.resilience + rawWeights.revenue;
+    return {
+      soil: rawWeights.soil/total, water: rawWeights.water/total,
+      resilience: rawWeights.resilience/total, revenue: rawWeights.revenue/total,
+    };
+  }
+
+  // ---- recompute RSI (mirrors score_sequence's weighted-sum + discount) ----
+  function recomputeRSI(rotation, weights){
+    let total = 0;
+    rotation.year_breakdown.forEach((y,i)=>{
+      const yearScore = weights.soil*y.soil_score + weights.water*y.water_score
+        + weights.resilience*y.resilience_score + weights.revenue*y.revenue_score;
+      total += Math.pow(DISCOUNT,i) * yearScore;
+    });
+    return total;
+  }
+
+  // ---- recompute impact_metrics (mirrors compute_impact_metrics) ----
+  function recomputeImpact(rotation, baselineCropName){
+    const length = rotation.sequence.length;
+    const baselineMeta = DATA.crops_meta[baselineCropName];
+    const rotationN = rotation.sequence.reduce((s,name)=> s + DATA.crops_meta[name].nitrogen_balance_kg_ha, 0);
+    const baselineN = baselineMeta.nitrogen_balance_kg_ha * length;
+    const nitrogenAvoided = rotationN - baselineN;
+
+    const rotationWater = rotation.sequence.reduce((s,name)=> s + DATA.water_demand_lookup[name], 0);
+    const baselineWater = DATA.water_demand_lookup[baselineCropName] * length;
+    const waterSaved = baselineWater - rotationWater;
+    const waterSavedPct = baselineWater ? 100*waterSaved/baselineWater : 0;
+
+    function bareDays(cropName){ return Math.max(0, 365 - (DATA.crops_meta[cropName].season_length_days||365)); }
+    const rotationBare = rotation.sequence.reduce((s,name)=> s + bareDays(name), 0);
+    const baselineBare = bareDays(baselineCropName) * length;
+    const bareAvoided = baselineBare - rotationBare;
+
+    const sdgTags = [];
+    if(waterSaved > 0) sdgTags.push({sdg:'SDG 6', label:'Clean Water and Sanitation',
+      rationale:`Uses ~${Math.round(waterSaved)} mm less water than continuous ${baselineCropName.replace(/_/g,' ')} over ${length} years.`});
+    if(nitrogenAvoided > 0){
+      sdgTags.push({sdg:'SDG 13', label:'Climate Action',
+        rationale:`Avoids ~${Math.round(nitrogenAvoided)} kg/ha of synthetic nitrogen vs. continuous ${baselineCropName.replace(/_/g,' ')}, reducing fertilizer-linked emissions.`});
+      sdgTags.push({sdg:'SDG 15', label:'Life on Land',
+        rationale:'Net positive nitrogen balance supports soil biological activity and organic matter vs. a nitrogen-depleting monoculture.'});
+    }
+    if(bareAvoided > 0 && !sdgTags.some(t=>t.sdg==='SDG 15')){
+      sdgTags.push({sdg:'SDG 15', label:'Life on Land',
+        rationale:`Leaves the field without living cover ~${Math.round(bareAvoided)} fewer days over ${length} years than continuous ${baselineCropName.replace(/_/g,' ')}.`});
+    }
+    return { nitrogen_fertilizer_avoided_kg_ha: nitrogenAvoided, water_saved_mm: waterSaved,
+      water_saved_pct: waterSavedPct, bare_field_days_avoided: bareAvoided, sdg_tags: sdgTags };
+  }
+
+  function statRow(label, key, val){
+    const pct = Math.round(Math.max(0,Math.min(1,val))*100);
+    return `<div class="stat-row"><span>${label}</span><div class="meter ${key}"><i style="width:${pct}%"></i></div><span>${pct}</span></div>`;
+  }
+
+  function cardHTML(year, index){
+    const meta = DATA.crops_meta[year.crop] || {};
+    const icon = ICONS[year.crop] || '🌿';
+    const color = typeColor(meta.crop_family);
+    const bareDays = year.bare_field_days;
+    const coveredPct = Math.round((365-bareDays)/365*100);
+    return `<div class="card" style="--type-color:${color}">
+      <div class="card-top">
+        <div class="card-icon">${icon}</div>
+        <div>
+          <div class="card-name">${year.crop.replace(/_/g,' ')}</div>
+          <div class="card-type">${roleLabel(meta.role)}</div>
+        </div>
+        <div class="year-tag">YR ${index+1}</div>
+      </div>
+      ${statRow('SOIL','soil',year.soil_score)}
+      ${statRow('WATER','water',year.water_score)}
+      ${statRow('RESIL','resilience',year.resilience_score)}
+      ${statRow('REV','revenue',year.revenue_score)}
+      <div class="bareline">
+        <div class="bareline-label"><span>LIVING COVER</span><span>${bareDays}d bare</span></div>
+        <div class="bareline-bar"><div class="covered" style="width:${coveredPct}%"></div><div class="bare" style="width:${100-coveredPct}%"></div></div>
+      </div>
+      <div class="card-summary">${year.explanation.summary}</div>
+      <button class="card-more" data-action="toggle">Show full card text ▾</button>
+    </div>`;
+  }
+
+  function renderHand(rotation){
+    const chain = document.getElementById('chain-cards');
+    let html = '';
+    rotation.year_breakdown.forEach((y,i)=>{
+      if(i>0) html += `<div class="chain-arrow">&rarr;</div>`;
+      html += cardHTML(y,i);
+    });
+    chain.innerHTML = html;
+    chain.querySelectorAll('[data-action="toggle"]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const card = btn.closest('.card');
+        card.classList.toggle('expanded');
+        btn.textContent = card.classList.contains('expanded') ? 'Hide full card text ▴' : 'Show full card text ▾';
+      });
+    });
+  }
+
+  function renderScoreboard(rotation, rsi, impact){
+    const board = document.getElementById('scoreboard');
+    const waterGood = impact.water_saved_mm >= 0;
+    board.innerHTML = `
+      <div class="tile ${impact.nitrogen_fertilizer_avoided_kg_ha>=0?'good':'warn'}"><div class="label">N FERTILIZER AVOIDED</div><div class="value">${fmt(impact.nitrogen_fertilizer_avoided_kg_ha)}<small> kg/ha</small></div></div>
+      <div class="tile ${waterGood?'good':'warn'}"><div class="label">WATER ${waterGood?'SAVED':'EXTRA NEEDED'}</div><div class="value">${fmt(Math.abs(impact.water_saved_mm))}<small> mm (${fmt(Math.abs(impact.water_saved_pct))}%)</small></div></div>
+      <div class="tile ${impact.bare_field_days_avoided>=0?'good':'warn'}"><div class="label">BARE-FIELD DAYS AVOIDED</div><div class="value">${fmt(impact.bare_field_days_avoided)}<small> days / ${rotation.sequence.length} yr</small></div></div>
+      <div class="tile"><div class="label">RSI SCORE (live)</div><div class="value">${fmt(rsi,2)}</div></div>
+    `;
+    const sdg = document.getElementById('sdg-badges');
+    sdg.innerHTML = (impact.sdg_tags||[]).map(t=>`
+      <div class="sdg-badge"><span class="icon">${t.sdg.indexOf('13')>-1?'🌍':t.sdg.indexOf('6')>-1?'💧':'🌱'}</span>
+        <div><div class="t">${t.sdg} &middot; ${t.label}</div><div class="r">${t.rationale}</div></div>
+      </div>`).join('') || '<span class="section-note">No SDG tags triggered against this baseline.</span>';
+  }
+
+  function renderRisks(rotation){
+    document.getElementById('risks').innerHTML = rotation.risks_and_gaps.map(r=>
+      `<div class="risk"><span class="mark">&#9888;</span><span>${r}</span></div>`).join('');
+  }
+
+  let selectedKey = null;
+
+  function allRotations(){ return [DATA.current_rotation, ...DATA.top_rotations]; }
+
+  function renderAll(){
+    const weights = normalizedWeights();
+    const baselineCropName = document.getElementById('baseline-select').value;
+    const scored = allRotations().map(r => ({
+      rotation:r, key:rotationKey(r), rsi: recomputeRSI(r, weights),
+    })).sort((a,b)=> b.rsi - a.rsi);
+
+    if(!selectedKey || !scored.some(s=>s.key===selectedKey)) selectedKey = scored[0].key;
+
+    const rail = document.getElementById('rail-list');
+    rail.innerHTML = scored.map((s,rank)=>{
+      const isCurrent = s.rotation === DATA.current_rotation;
+      const label = isCurrent ? 'Farmer’s current practice' : `Candidate`;
+      const seq = s.rotation.sequence.map(c=>ICONS[c]||'🌿').join(' ');
+      return `<button aria-pressed="${s.key===selectedKey}" data-key="${s.key}">
+        <strong>#${rank+1} &middot; ${label}</strong>${seq} &middot; <span class="rsi">RSI ${fmt(s.rsi,2)}</span>
+      </button>`;
+    }).join('');
+    rail.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ selectedKey = btn.dataset.key; renderAll(); });
+    });
+
+    const chosen = scored.find(s=>s.key===selectedKey);
+    const impact = recomputeImpact(chosen.rotation, baselineCropName);
+    renderHand(chosen.rotation);
+    renderScoreboard(chosen.rotation, chosen.rsi, impact);
+    renderRisks(chosen.rotation);
+  }
+
+  // ---- slider + baseline wiring ----
+  function syncSliderLabel(key){
+    document.getElementById('w-'+key+'-pct').textContent = Math.round(100*normalizedWeights()[key]) + '%';
+  }
+  ['soil','water','resilience','revenue'].forEach(key=>{
+    const input = document.getElementById('w-'+key);
+    input.addEventListener('input', ()=>{
+      rawWeights[key] = parseInt(input.value,10);
+      ['soil','water','resilience','revenue'].forEach(syncSliderLabel);
+      renderAll();
+    });
+  });
+  document.getElementById('reset-btn').addEventListener('click', ()=>{
+    const defaults = { soil:30, water:30, resilience:15, revenue:25 };
+    Object.keys(defaults).forEach(k=>{ rawWeights[k]=defaults[k]; document.getElementById('w-'+k).value=defaults[k]; syncSliderLabel(k); });
+    document.getElementById('baseline-select').value = DATA.baseline_crop;
+    renderAll();
+  });
+  ['soil','water','resilience','revenue'].forEach(syncSliderLabel);
+
+  function populateBaselineSelect(){
+    const sel = document.getElementById('baseline-select');
+    sel.innerHTML = Object.keys(DATA.crops_meta).map(name=>
+      `<option value="${name}" ${name===DATA.baseline_crop?'selected':''}>Continuous ${name.replace(/_/g,' ')}</option>`
+    ).join('');
+    sel.addEventListener('change', renderAll);
+  }
+
+  function renderUnused(){
+    document.getElementById('unused').innerHTML = UNUSED_CARDS.map(([name,icon])=>
+      `<div class="unused-chip"><span class="icon">${icon}</span>${name}</div>`).join('');
+  }
+
+  function renderChart(){
+    const svg = document.getElementById('chart');
+    const W=760,H=220,padL=34,padR=10,padT=10,padB=26;
+    const months = DATA.monthly;
+    const maxV = Math.max(...months.map(m=>Math.max(m.precip_mm,m.et0_mm))) * 1.15;
+    const plotW = W-padL-padR, plotH = H-padT-padB;
+    const x = i => padL + (i/(months.length-1))*plotW;
+    const y = v => padT + plotH - (v/maxV)*plotH;
+    function pathFor(key){
+      return months.map((m,i)=> (i===0?'M':'L') + x(i).toFixed(1)+','+y(m[key]).toFixed(1)).join(' ');
+    }
+    let s = '';
+    for(let g=0; g<=3; g++){
+      const gy = padT + plotH*g/3;
+      s += `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${W-padR}" y2="${gy.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    }
+    s += `<path d="${pathFor('precip_mm')}" fill="none" stroke="var(--water)" stroke-width="2.5"/>`;
+    s += `<path d="${pathFor('et0_mm')}" fill="none" stroke="var(--warn)" stroke-width="2.5" stroke-dasharray="5 4"/>`;
+    months.forEach((m,i)=>{
+      s += `<circle cx="${x(i).toFixed(1)}" cy="${y(m.precip_mm).toFixed(1)}" r="3" fill="var(--water)"/>`;
+      s += `<circle cx="${x(i).toFixed(1)}" cy="${y(m.et0_mm).toFixed(1)}" r="3" fill="var(--warn)"/>`;
+      if(i%2===0) s += `<text x="${x(i).toFixed(1)}" y="${H-8}" text-anchor="middle">${m.month.slice(5)}</text>`;
+    });
+    svg.innerHTML = s;
+  }
+
+  // ---- schematic map: CONUS graticule, Ames pin, click-anywhere pin-drop ----
+  function renderMap(){
+    const svg = document.getElementById('map');
+    const tip = document.getElementById('map-tip');
+    const W=600,H=320, padL=40,padR=16,padT=16,padB=16;
+    const bbox = { lon0:-125, lon1:-66, lat0:24, lat1:50 };
+    function project(lon, lat){
+      const x = padL + (lon-bbox.lon0)/(bbox.lon1-bbox.lon0) * (W-padL-padR);
+      const y = padT + (1 - (lat-bbox.lat0)/(bbox.lat1-bbox.lat0)) * (H-padT-padB);
+      return {x,y};
+    }
+    function unproject(x, y){
+      const lon = bbox.lon0 + (x-padL)/(W-padL-padR) * (bbox.lon1-bbox.lon0);
+      const lat = bbox.lat0 + (1 - (y-padT)/(H-padT-padB)) * (bbox.lat1-bbox.lat0);
+      return {lon, lat};
+    }
+    let s = `<rect x="${padL}" y="${padT}" width="${W-padL-padR}" height="${H-padT-padB}" fill="var(--bg2)" rx="6"/>`;
+    for(let lon=-120; lon>=-70; lon-=10){
+      const p = project(lon, bbox.lat0); const p2 = project(lon, bbox.lat1);
+      s += `<line x1="${p.x.toFixed(1)}" y1="${p2.y.toFixed(1)}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+      s += `<text x="${p.x.toFixed(1)}" y="${H-4}" text-anchor="middle">${lon}&deg;</text>`;
+    }
+    for(let lat=25; lat<=50; lat+=5){
+      const p = project(bbox.lon0, lat); const p2 = project(bbox.lon1, lat);
+      s += `<line x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+      s += `<text x="${padL-6}" y="${(p.y+3).toFixed(1)}" text-anchor="end">${lat}&deg;</text>`;
+    }
+    // ~55km POWER grid cell around Ames (approx in degrees at this latitude)
+    const ames = project(DATA.farm.lon, DATA.farm.lat);
+    s += `<ellipse cx="${ames.x.toFixed(1)}" cy="${ames.y.toFixed(1)}" rx="9" ry="7" fill="var(--accent)" opacity="0.18"/>`;
+    s += `<circle cx="${ames.x.toFixed(1)}" cy="${ames.y.toFixed(1)}" r="6" fill="var(--accent)"><animate attributeName="r" values="6;9;6" dur="2s" repeatCount="indefinite"/></circle>`;
+    s += `<circle cx="${ames.x.toFixed(1)}" cy="${ames.y.toFixed(1)}" r="3" fill="var(--bg)"/>`;
+    s += `<text x="${(ames.x+10).toFixed(1)}" y="${(ames.y-8).toFixed(1)}" fill="var(--accent)" font-weight="700">Ames, IA (live)</text>`;
+    svg.innerHTML = s;
+    svg.setAttribute('data-ames-x', ames.x); svg.setAttribute('data-ames-y', ames.y);
+
+    let dropPin = null;
+    svg.addEventListener('click', (ev)=>{
+      const rect = svg.getBoundingClientRect();
+      const px = (ev.clientX-rect.left) / rect.width * W;
+      const py = (ev.clientY-rect.top) / rect.height * H;
+      if(px<padL || px>W-padR || py<padT || py>H-padB) return;
+      const {lon,lat} = unproject(px,py);
+      const distToAmes = Math.hypot(px-ames.x, py-ames.y);
+      if(dropPin) dropPin.remove();
+      const ns = 'http://www.w3.org/2000/svg';
+      const pin = document.createElementNS(ns,'circle');
+      pin.setAttribute('cx', px); pin.setAttribute('cy', py); pin.setAttribute('r', 5);
+      pin.setAttribute('fill', distToAmes<14 ? 'var(--accent)' : 'var(--warn)');
+      svg.appendChild(pin); dropPin = pin;
+
+      tip.style.display = 'block';
+      tip.style.left = Math.min(px+16, W-250) + 'px';
+      tip.style.top = Math.max(py-10, 0) + 'px';
+      if(distToAmes<14){
+        tip.innerHTML = `<strong>Ames, IA</strong>This is the active pin for this demo &mdash; all the data above is live for this point.`;
+      } else {
+        tip.innerHTML = `<strong>${lat.toFixed(2)}, ${lon.toFixed(2)}</strong>Live fetch isn't wired into this demo. In the real product, dropping a pin here calls NASA POWER + SoilGrids for this exact point and reruns scoring.`;
+      }
+    });
+  }
+
+  renderUnused();
+  renderChart();
+  renderMap();
+  populateBaselineSelect();
+  renderAll();
+})();
+</script>
