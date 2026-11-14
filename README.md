@@ -6,6 +6,7 @@
 - [API contract](docs/api-contract.md)
 - [Data science approach](docs/data-science-approach.md)
 - [Validation](docs/validation.md)
+- [AI usage](AI_USAGE.md) — where Claude Code was used to build this, and where it wasn't.
 
 ## Repo structure
 
