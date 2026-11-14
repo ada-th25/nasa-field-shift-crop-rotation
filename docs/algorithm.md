@@ -64,8 +64,10 @@ score (see §13).
 
 ### 2.3 Crop dataset (`data/crops.json`)
 
-A hand-curated table of eight crops (maize, soybean, winter wheat, oats,
-cereal rye as a cover crop, alfalfa, lentil, chickpea), each with:
+A hand-curated table of ten crops (maize, soybean, winter wheat, oats,
+cereal rye as a cover crop, alfalfa, lentil, chickpea, rice, sorghum), each
+with a `flood_irrigated` flag where relevant (currently only rice, see
+§12) plus:
 
 - `crop_family` (for the agronomic hard filter)
 - `nitrogen_balance_kg_ha` (net soil nitrogen credit or debit for the year)
@@ -190,7 +192,7 @@ not) and easier to explain to a judge live.
 
 **Scaling note**: because this is a full Cartesian product, candidate
 generation is `O(n^k)` in the crop pool size `n` and sequence length `k`.
-At 8 crops and a 3-year sequence this is a few hundred candidates, trivial
+At 10 crops and a 3-year sequence this is a few hundred candidates, trivial
 to score exhaustively. It would need a smarter search (e.g. branch and
 bound, or simply capping the pool before the product) before extending to
 a much longer rotation or a substantially larger crop catalogue.
@@ -386,8 +388,13 @@ a frost warning (from §5), a note when SoilGrids had no reading at this
 exact point, a note when a perennial forage crop appears for only one year
 in a sequence (real perennial forage is established once and kept in the
 ground for several years, not replanted annually, and this engine does not
-model establishment-year yield drag), and the climate-mismatch note from
-§5 for a farmer's self-reported current rotation.
+model establishment-year yield drag), the climate-mismatch note from §5
+for a farmer's self-reported current rotation, and a note for any crop
+flagged `flood_irrigated: true` in `crops.json` (currently only rice):
+the Kc × ET0 water-demand calculation covers crop transpiration only, not
+a flooded paddy's standing-water maintenance or percolation losses, so its
+real water use is likely well above what this engine's water score and
+impact metrics report.
 
 ## 13. Known limitations not yet addressed
 
@@ -404,14 +411,20 @@ model establishment-year yield drag), and the climate-mismatch note from
   soil-score precision should be assumed "generic estimate" almost
   anywhere outside a handful of well-covered points, not treated as site-
   specific. See §15 for a worked look at options to close this.
-- **The crop dataset is temperate-US-centric, independent of the weather
-  data's own global reach.** All eight crops passed the temperature filter
-  at every tested site except Reykjavik, which sounds global, but passing
-  a temperature check is not the same as being agronomically or culturally
-  appropriate: a farmer in Lagos or Mumbai would currently get rotation
-  advice built from maize, soybean, wheat, oats, rye, alfalfa, lentil and
-  chickpea, not rice, sorghum, millet or cassava. This is a dataset-scope
-  gap, not a bug in the filter.
+- **The crop dataset was temperate-US-centric, independent of the weather
+  data's own global reach.** At the time of this test (eight crops: maize,
+  soybean, wheat, oats, rye, alfalfa, lentil, chickpea), all eight passed
+  the temperature filter at every site except Reykjavik, which sounds
+  global, but passing a temperature check is not the same as being
+  agronomically or culturally appropriate: a farmer in Lagos or Mumbai
+  would have gotten rotation advice built entirely from that list, not
+  rice, sorghum, millet or cassava. Rice and sorghum were subsequently
+  added (§15) specifically to test whether the dataset could generalise;
+  it could, cleanly, with the same sourcing rigour as the rest of
+  `crops.json`. That is evidence the approach scales, not evidence the
+  gap is closed — millet, cassava and most other staples a Lagos or Mumbai
+  farmer would actually plant are still missing, and this remains a
+  dataset-scope gap, not a bug in the filter.
 - **SoilGrids clay, sand and pH are fetched but unused.** Only organic
   carbon currently feeds a score.
 - **No cumulative soil nitrogen or carbon pool across years.** Each year's
@@ -451,48 +464,57 @@ model establishment-year yield drag), and the climate-mismatch note from
 
 ## 15. Options considered for the global-coverage gap (§13)
 
-Explored but not yet built, ranked by effort against how much they'd
-actually move the two gaps above.
+Ranked by effort against how much they'd actually move the two gaps
+above. Status notes record what was actually done, not just proposed.
 
 ### Soil data reliability
 
-1. **Retry once on a null response before accepting it** (low effort).
-   Worth doing regardless of anything else: if ISRIC's null is sometimes a
-   transient hiccup rather than genuinely missing coverage, a retry costs
-   almost nothing and silently improves hit rate.
+1. **Retry a few times on a null response before accepting it** (low
+   effort). **Done** — `fetch_soilgrids` now retries up to twice (1.5s
+   apart) when `soc` comes back null. Tested live: it did not recover
+   Lagos or Paris (both still null after retrying, so whatever is
+   happening there is not a one-off transient blip on that timescale),
+   but it costs nothing on the success path (confirmed: the already-
+   working Ames point still returns in ~1.3s, no retry triggered) and may
+   still help some other, genuinely transient miss.
 2. **Replace the flat neutral (0.5) fallback with a climate-informed
-   default** (low-medium effort). The site's own POWER data already gives
-   a rough climate signal (mean temperature, precipitation); a small
-   lookup table of typical topsoil organic carbon by broad climate class
-   (e.g. temperate grassland vs. tropical vs. arid) would be a better
-   "best guess" than one constant everywhere, while still being clearly
-   flagged as estimated, not measured.
+   default.** **Explored, not implemented.** The idea was to use the
+   site's own POWER data (mean temperature, precipitation) to pick a
+   better "best guess" than one constant everywhere. Looked for a
+   defensible source of typical topsoil organic carbon in g/kg by broad
+   climate class and didn't find one precise enough to cite responsibly
+   — the literature reports carbon *stocks* per unit area, which need a
+   bulk-density assumption to convert to a concentration, and that
+   conversion would have added invented precision on top of an already
+   rough idea. Dropped rather than ship a number this project can't back
+   up; the existing flat, clearly-flagged-as-estimated fallback stays.
 3. **Switch from SoilGrids' REST point-query endpoint to its WCS raster
-   tiles and sample the pixel directly** (high effort). ISRIC's own docs
-   suggest the raster service is the more authoritative path; the REST
-   query endpoint we currently call may simply be less reliable. This
-   needs a raster library (e.g. `rasterio`) and tile-index math, real
+   tiles and sample the pixel directly** (high effort, not built). ISRIC's
+   own docs suggest the raster service is the more authoritative path;
+   the REST query endpoint we currently call may simply be less reliable.
+   This needs a raster library (e.g. `rasterio`) and tile-index math, real
    engineering, not a config change, and is the right long-term fix if
    this project continues past the hackathon.
-4. **Add a second global soil source as a fallback** (high effort, and a
-   new source to vet and cite with the same rigour as everything else in
-   `data/crops.json`). Not recommended for this weekend.
-
-**Recommendation for now**: do 1 and 2. Both are small, both make the
-existing fallback strictly better without touching its honesty (still
-flagged as estimated), and 3/4 are reasonable "if we had another week"
-answers to give a judge who asks.
+4. **Add a second global soil source as a fallback** (high effort, not
+   built, and a new source to vet and cite with the same rigour as
+   everything else in `data/crops.json`). Not recommended for this
+   weekend.
 
 ### Crop dataset regional narrowness
 
 1. **Add a handful of crops for other major climate zones**, sourced the
    same way lentil and chickpea were (FAO-56 Table 12 for Kc, a credible
    regional source for nitrogen balance and yield, every disagreement
-   between sources flagged in `source`). Rice (flooded, tropical/monsoon)
-   and sorghum or millet (semi-arid) would do the most to demonstrate the
-   dataset *can* extend past the US Midwest, without claiming global
-   completeness it can't back up (low-medium effort per crop; most of the
-   time is sourcing and cross-checking, not code).
+   between sources flagged in `source`). **Done** — rice (flooded,
+   tropical/monsoon) and sorghum (semi-arid) were added; both pass the
+   climate filter at every tested global site except Reykjavik,
+   demonstrating the dataset generalises past the US Midwest without
+   claiming full global completeness. Adding rice also surfaced a real
+   modelling gap worth having found: the Kc × ET0 water-demand calculation
+   only covers transpiration, not a flooded paddy's standing-water and
+   percolation losses, so rice now carries its own dedicated caveat in
+   `risks_and_gaps` (see §12) rather than silently under-reporting its
+   real water use.
 2. **Tag crops by region/biome and filter on that in addition to
    temperature** (medium effort). Temperature alone already lets through
    crops that pass the number but would be a strange recommendation for
@@ -503,8 +525,8 @@ answers to give a judge who asks.
    pipeline for a handful of crops; that conclusion still holds even with
    more crops in view, unless the project moves well past hackathon scope.
 
-**Recommendation for now**: do 1, two or three crops, framed explicitly as
-"proof the dataset generalises" rather than "now covers the world." That
-claim would not survive a judge who checks it, and this project's whole
-approach has been to never make one it can't back up.
+2 and 3 remain open; neither was needed to demonstrate the dataset
+generalises, which was the actual goal here, not "now covers the world."
+That stronger claim would not survive a judge who checks it, and this
+project's whole approach has been to never make one it can't back up.
 

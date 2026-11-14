@@ -109,19 +109,21 @@ on what's literature-backed vs. my own construction:
 
 ## The crop dataset (`data/crops.json`)
 
-Eight crops: maize, soybean, winter wheat, oats, cereal rye (cover crop),
-alfalfa, lentil, chickpea. Each has nitrogen balance, water requirement (Kc
-curve + season length), temperature tolerance, root depth class, drought
-tolerance, and a cited source. The first six are Central Iowa rotation
-staples; lentil and chickpea were added afterwards as additional legume
+Ten crops: maize, soybean, winter wheat, oats, cereal rye (cover crop),
+alfalfa, lentil, chickpea, rice, sorghum. Each has nitrogen balance, water
+requirement (Kc curve + season length), temperature tolerance, root depth
+class, drought tolerance, and a cited source. The first six are Central
+Iowa rotation staples; lentil and chickpea were added as additional legume
 break-crop options (not Iowa-typical, but agronomically valid) to widen the
 candidate pool and give the frontend's crop-card set something to match
-against.
+against; rice and sorghum were added afterwards specifically to test
+whether the dataset could extend beyond a US-Midwest-temperate crop list —
+see `docs/algorithm.md` sections 13 and 15 for what that test found.
 
 There's no single clean global API with all of these fields together.
 Closest real sources if we expand the crop list or add other regions:
 - **FAO-56 Tables 12/22** — Kc values and rooting depth, ~80 crops, PDF
-  tables (what the current 8 were transcribed from).
+  tables (what the current 10 were transcribed from).
 - **FAO EcoCrop**, now folded into **GAEZ v4** (gaez.fao.org) — temperature/
   rainfall/pH tolerance for 2,500+ species, but distributed as GIS raster
   data, not a simple per-crop lookup; would need extraction code.
