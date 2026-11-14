@@ -5,6 +5,7 @@
 - [Pitch report](docs/pitch-report.md) — the full write-up for judging: what we built, sources, methodology, validation, charts, limitations.
 - [API contract](docs/api-contract.md)
 - [Data science approach](docs/data-science-approach.md)
+- [Algorithm: implementation and references](docs/algorithm.md) — the equations, parameter choices, and citations behind each scoring step.
 - [Validation](docs/validation.md)
 - [AI usage](AI_USAGE.md) — where Claude Code was used to build this, and where it wasn't.
 
