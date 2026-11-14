@@ -6,6 +6,7 @@ Docs: https://www.isric.org/explore/soilgrids/faq-soilgrids#What_do_the_filename
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import requests
@@ -35,36 +36,23 @@ def _cache_path(lat: float, lon: float) -> Path:
     return CACHE_DIR / f"soilgrids_{lat}_{lon}.json"
 
 
-def fetch_soilgrids(
-    lat: float,
-    lon: float,
-    properties: list[str] | None = None,
-    use_cache: bool = True,
-) -> dict:
-    """Fetch topsoil properties for a point and return a flat dict,
-    e.g. {"clay_pct": 24.3, "sand_pct": 38.1, "ph": 6.4, "soc_g_kg": 18.2}.
-    """
-    properties = properties or DEFAULT_PROPERTIES
-    cache_file = _cache_path(lat, lon)
+def _query_soilgrids(lat: float, lon: float, properties: list[str]) -> dict:
+    response = requests.get(
+        SOILGRIDS_BASE_URL,
+        params={
+            "lon": lon,
+            "lat": lat,
+            "property": properties,
+            "depth": DEFAULT_DEPTH,
+            "value": DEFAULT_VALUE,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
 
-    if use_cache and cache_file.exists():
-        raw = json.loads(cache_file.read_text())
-    else:
-        response = requests.get(
-            SOILGRIDS_BASE_URL,
-            params={
-                "lon": lon,
-                "lat": lat,
-                "property": properties,
-                "depth": DEFAULT_DEPTH,
-                "value": DEFAULT_VALUE,
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        raw = response.json()
-        cache_file.write_text(json.dumps(raw))
 
+def _parse_soilgrids(raw: dict) -> dict:
     result = {}
     for layer in raw["properties"]["layers"]:
         name = layer["name"]
@@ -82,6 +70,43 @@ def fetch_soilgrids(
         "ph": result.get("phh2o"),
         "soc_g_kg": result.get("soc"),
     }
+
+
+def fetch_soilgrids(
+    lat: float,
+    lon: float,
+    properties: list[str] | None = None,
+    use_cache: bool = True,
+    max_retries: int = 2,
+) -> dict:
+    """Fetch topsoil properties for a point and return a flat dict,
+    e.g. {"clay_pct": 24.3, "sand_pct": 38.1, "ph": 6.4, "soc_g_kg": 18.2}.
+
+    Observed live (see docs/algorithm.md §13): the REST query endpoint
+    sometimes returns a valid 200 response with every property null for a
+    point that other nearby points resolve fine -- not an error we can
+    catch, just an empty answer. A couple of quick retries costs little and
+    recovers some of those; if it's still null after `max_retries`, this
+    returns the null result as-is and the caller's existing
+    soil_carbon_is_estimated fallback takes over.
+    """
+    properties = properties or DEFAULT_PROPERTIES
+    cache_file = _cache_path(lat, lon)
+
+    if use_cache and cache_file.exists():
+        return _parse_soilgrids(json.loads(cache_file.read_text()))
+
+    raw = _query_soilgrids(lat, lon, properties)
+    parsed = _parse_soilgrids(raw)
+    attempt = 0
+    while parsed.get("soc_g_kg") is None and attempt < max_retries:
+        time.sleep(1.5)
+        raw = _query_soilgrids(lat, lon, properties)
+        parsed = _parse_soilgrids(raw)
+        attempt += 1
+
+    cache_file.write_text(json.dumps(raw))
+    return parsed
 
 
 if __name__ == "__main__":
